@@ -22,8 +22,8 @@ Install dependencies from the repository root:
 npm install
 ```
 
-The frontend reads its API URL from `frontend/.env.local`. Copy the example file
-to create it:
+The frontend reads its API and public application URLs from
+`frontend/.env.local`. Copy the example file to create it:
 
 ```powershell
 Copy-Item frontend\.env.example frontend\.env.local
@@ -62,8 +62,11 @@ The database check is available at [http://localhost:4000/health/database](http:
 Register at [http://localhost:3000/register](http://localhost:3000/register) or
 sign in at [http://localhost:3000/login](http://localhost:3000/login). A
 successful login or registration sets an HttpOnly cookie and opens
-[http://localhost:3000/dashboard](http://localhost:3000/dashboard), which loads
-the authenticated account from `GET /auth/me`.
+[http://localhost:3000/dashboard](http://localhost:3000/dashboard). The
+organization dashboard loads the user's organization and assistant from
+`GET /organization/me`, and its documents from
+`GET /organization/me/documents`. Both endpoints derive the organization from
+the authenticated user.
 
 You can also verify the API from PowerShell. Registration/login set an
 HttpOnly cookie in the web session; `/auth/me` uses that cookie:
@@ -87,10 +90,12 @@ To verify login, use a new web session with the same email/password at
 
 If you use the VS Code REST Client extension, open
 [`backend/requests/auth.http`](./backend/requests/auth.http) and
-[`backend/requests/health.http`](./backend/requests/health.http). Run the
-register request with a new email, then run login and `/auth/me`; REST Client
-retains the HttpOnly cookie for requests to the local API. Change the sample
-email/password at the top of `auth.http` for your test account.
+[`backend/requests/health.http`](./backend/requests/health.http), and
+[`backend/requests/organization.http`](./backend/requests/organization.http).
+Run the register request with a new email, then run login and the organization
+requests; REST Client retains the HttpOnly cookie for requests to the local API.
+Change the sample email/password at the top of `auth.http` for your test
+account.
 
 Build both applications with:
 

@@ -1,0 +1,14 @@
+@baseUrl = http://localhost:4000
+
+### Get the authenticated user's organization and assistant
+GET {{baseUrl}}/organization/me
+
+### List documents belonging to the authenticated user's organization
+GET {{baseUrl}}/organization/me/documents
+
+### Verify organization endpoints reject unauthenticated requests
+# Clear the REST Client cookie jar before running these requests to expect 401.
+GET {{baseUrl}}/organization/me
+
+###
+GET {{baseUrl}}/organization/me/documents

@@ -4,6 +4,8 @@ import {
   Get,
   Post,
   Res,
+  HttpCode,
+  HttpStatus,
   UseGuards,
 } from '@nestjs/common';
 import type { Response } from 'express';
@@ -39,6 +41,18 @@ export class AuthController {
     const result = await this.authService.login(dto);
     this.setAuthCookie(response, result.token);
     return { user: result.user, organization: result.organization };
+  }
+
+  @Post('logout')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  logout(@Res({ passthrough: true }) response: Response): void {
+    const sameSite = process.env.COOKIE_SAME_SITE === 'none' ? 'none' : 'lax';
+    response.clearCookie(AUTH_COOKIE, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production' || sameSite === 'none',
+      sameSite,
+      path: '/',
+    });
   }
 
   @UseGuards(JwtAuthGuard)

@@ -12,8 +12,8 @@ Content-Type: application/json
 {
   "name": "Knowly Test User",
   "organizationName": "Knowly Test Organization",
-  "email": "{{email}}",
-  "password": "{{password}}"
+  "email": "manav@gmail.com",
+  "password": "password"
 }
 
 ### Log in
@@ -21,8 +21,8 @@ POST {{baseUrl}}/auth/login
 Content-Type: application/json
 
 {
-  "email": "{{email}}",
-  "password": "{{password}}"
+  "email": "manav@gmail.com",
+  "password": "password"
 }
 
 ### Get the authenticated account (run after register or login)
@@ -31,3 +31,6 @@ GET {{baseUrl}}/auth/me
 ### Verify unauthenticated requests are rejected
 # Clear the REST Client cookie jar before running this request to expect 401.
 GET {{baseUrl}}/auth/me
+
+### Log out (clears the HttpOnly session cookie)
+POST {{baseUrl}}/auth/logout
