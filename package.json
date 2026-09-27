@@ -9,6 +9,8 @@
   "scripts": {
     "dev:frontend": "npm run dev --workspace frontend",
     "dev:backend": "npm run start:dev --workspace backend",
+    "test:tenant": "npm run test:tenant --workspace backend",
+    "seed:demo": "npm run seed:demo --workspace backend",
     "build": "npm run build --workspaces --if-present"
   }
 }

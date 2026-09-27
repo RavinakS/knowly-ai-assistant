@@ -7,6 +7,11 @@ import { DocumentsService } from './documents.service.js';
 import { LocalUploadStorage } from './local-upload-storage.js';
 import { PdfTextExtractorService } from './pdf-text-extractor.service.js';
 import { ChunkingService } from './chunking.service.js';
+import { RetrievalService } from './retrieval.service.js';
+import { QuestionUnderstandingService } from './question-understanding.service.js';
+import { SystemOneService } from './system-one.service.js';
+import { AnswerGenerationService } from './answer-generation.service.js';
+import { AnswerPipelineService } from './answer-pipeline.service.js';
 
 @Module({
   imports: [AuthModule],
@@ -15,9 +20,15 @@ import { ChunkingService } from './chunking.service.js';
     DocumentsService,
     DocumentProcessingService,
     ChunkingService,
+    RetrievalService,
+    QuestionUnderstandingService,
+    SystemOneService,
+    AnswerGenerationService,
+    AnswerPipelineService,
     LocalUploadStorage,
     PdfTextExtractorService,
     JwtAuthGuard,
   ],
+  exports: [AnswerPipelineService],
 })
 export class DocumentsModule {}

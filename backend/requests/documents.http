@@ -1,6 +1,7 @@
 @baseUrl = http://localhost:4000
 @pdfPath = C:/path/to/your/document.pdf
 @documentId = def71902-1888-499d-9f78-c60f750f4125
+@question = What GPA is required for the merit scholarship?
 
 ### Upload a PDF to the authenticated user's organization
 # Run register/login in auth.http first so REST Client has the HttpOnly cookie.
@@ -20,3 +21,60 @@ GET {{baseUrl}}/organization/me/documents
 ### Inspect extracted page text for a document you own
 # Replace the ID with a document ID from a successful upload response.
 GET {{baseUrl}}/documents/{{documentId}}/pages
+
+### Search your organization's ready document chunks
+# Run register/login in auth.http first. No organizationId is accepted.
+POST {{baseUrl}}/documents/search
+Content-Type: application/json
+
+{
+  "question": "{{question}}"
+}
+
+### Search with no expected matches
+POST {{baseUrl}}/documents/search
+Content-Type: application/json
+
+{
+  "question": "What is the weather in London?"
+}
+
+### Understand a question without answering it (requires LLM_API_KEY)
+POST {{baseUrl}}/documents/understand-question
+Content-Type: application/json
+
+{
+  "question": "What GPA do I gotta have to get the merit scholarship?"
+}
+
+### Run question understanding, tenant-scoped retrieval, and System 1 decision
+POST {{baseUrl}}/documents/decide
+Content-Type: application/json
+
+{
+  "question": "{{question}}"
+}
+
+### Decision when no matching organization knowledge exists
+POST {{baseUrl}}/documents/decide
+Content-Type: application/json
+
+{
+  "question": "What is the weather in London?"
+}
+
+### Generate a grounded answer with document/page references
+POST {{baseUrl}}/documents/answer
+Content-Type: application/json
+
+{
+  "question": "{{question}}"
+}
+
+### Return a no-knowledge response without answer generation
+POST {{baseUrl}}/documents/answer
+Content-Type: application/json
+
+{
+  "question": "What is the weather in London?"
+}

@@ -177,8 +177,8 @@ export function DashboardAccount() {
     account?.assistant && publicAppUrl
       ? `${publicAppUrl}/assistant/${account.assistant.token}`
       : null;
-  const embedCode = assistantUrl
-    ? `<iframe src="${assistantUrl}" width="100%" height="600" frameborder="0" title="Knowly Assistant"></iframe>`
+  const embedCode = assistantUrl && account?.assistant && publicAppUrl
+    ? `<iframe src="${publicAppUrl}/embed/assistant/${encodeURIComponent(account.assistant.token)}" width="100%" height="600" style="border:0;" title="Knowly Assistant"></iframe>`
     : "";
 
   const copyText = useCallback(async (text: string, label: string) => {

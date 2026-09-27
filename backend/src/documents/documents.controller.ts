@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  Body,
   Controller,
   Get,
   Param,
@@ -17,6 +18,12 @@ import { CurrentUser } from '../auth/current-user.decorator.js';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
 import { DocumentsService } from './documents.service.js';
 import { MulterExceptionFilter } from './multer-exception.filter.js';
+import { SearchDocumentsDto } from './dto/search-documents.dto.js';
+import { RetrievalService } from './retrieval.service.js';
+import { UnderstandQuestionDto } from './dto/understand-question.dto.js';
+import { QuestionUnderstandingService } from './question-understanding.service.js';
+import { SystemOneService } from './system-one.service.js';
+import { AnswerPipelineService } from './answer-pipeline.service.js';
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
@@ -24,7 +31,53 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024;
 @UseGuards(JwtAuthGuard)
 @UseFilters(MulterExceptionFilter)
 export class DocumentsController {
-  constructor(private readonly documentsService: DocumentsService) {}
+  constructor(
+    private readonly documentsService: DocumentsService,
+    private readonly retrievalService: RetrievalService,
+    private readonly questionUnderstanding: QuestionUnderstandingService,
+    private readonly systemOne: SystemOneService,
+    private readonly answerPipeline: AnswerPipelineService,
+  ) {}
+
+  @Post('understand-question')
+  understandQuestion(@Body() dto: UnderstandQuestionDto) {
+    return this.questionUnderstanding.understand(dto.question);
+  }
+
+  @Post('decide')
+  async decide(@CurrentUser() user: AuthenticatedUser, @Body() dto: UnderstandQuestionDto) {
+    const questionUnderstanding = await this.questionUnderstanding.understand(
+      dto.question,
+    );
+    const retrieval =
+      questionUnderstanding.normalizedQuestion.trim() &&
+      questionUnderstanding.keywords.length > 0
+        ? await this.retrievalService.searchForUser(user.id, {
+            question: questionUnderstanding.normalizedQuestion,
+            keywords: questionUnderstanding.keywords,
+          })
+        : { results: [], hasRelevantKnowledge: false };
+    const decision = this.systemOne.decide(questionUnderstanding, retrieval);
+
+    return {
+      ...decision,
+      questionUnderstanding,
+      retrieval,
+    };
+  }
+
+  @Post('answer')
+  answer(@CurrentUser() user: AuthenticatedUser, @Body() dto: UnderstandQuestionDto) {
+    return this.answerPipeline.answerForUser(user.id, dto.question);
+  }
+
+  @Post('search')
+  search(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: SearchDocumentsDto,
+  ) {
+    return this.retrievalService.searchForUser(user.id, dto.question);
+  }
 
   @Post()
   @UseInterceptors(

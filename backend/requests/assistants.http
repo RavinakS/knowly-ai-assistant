@@ -1,0 +1,25 @@
+@baseUrl = http://localhost:4000
+@publicId = replace-with-public-id-from-create-response
+
+### Create or get the authenticated organization's public assistant
+# Run register/login in auth.http first.
+POST {{baseUrl}}/assistants
+
+### Ask the public assistant (no login required)
+POST {{baseUrl}}/public/assistants/{{publicId}}/answer
+Content-Type: application/json
+
+{
+  "question": "What GPA is required for the scholarship?"
+}
+
+### Resolve active public assistant info (no login required)
+GET {{baseUrl}}/public/assistants/{{publicId}}
+
+### Public request with no organization selector
+POST {{baseUrl}}/public/assistants/{{publicId}}/answer
+Content-Type: application/json
+
+{
+  "question": "What is the weather in London?"
+}

@@ -1,0 +1,2 @@
+ALTER TABLE "Assistant"
+ADD COLUMN "isActive" BOOLEAN NOT NULL DEFAULT true;

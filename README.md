@@ -1,180 +1,307 @@
-# Knowly
+# Knowly — AI Knowledge & Decision Assistant
 
-Knowly is a foundation for a multi-tenant AI knowledge and decision assistant. Organizations can manage their own knowledge and prepare to provide grounded answers with document references. The project includes the web and API foundations, PostgreSQL database schema managed with Prisma, JWT-based account authentication, PDF text extraction, and deterministic page-scoped chunking. Retrieval and AI are not implemented yet.
+Knowly is a multi-tenant knowledge assistant for organizations. Teams can upload
+PDF policies and reference material, then let authenticated users or visitors to
+a public assistant ask questions answered from that organization's documents.
+Answers include document and page sources.
 
-## Stack
+## Problem and features
 
-- **Frontend:** Next.js App Router, React, TypeScript, and Tailwind CSS
-- **Backend:** NestJS, TypeScript, Prisma, and PostgreSQL
+Organizations often keep important policies in PDFs that are difficult to
+search and interpret. Knowly provides:
+
+- Account registration and login, with an organization created for each new
+  account.
+- Organization-scoped PDF upload and document management.
+- Page-level PDF text extraction and deterministic overlapping chunks.
+- Keyword-based retrieval, question understanding, and a deterministic
+  System 1 decision step.
+- Grounded answer generation with backend-attached document/page references.
+- A public assistant URL and an iframe-friendly embed page.
+- Automated API integration tests for authenticated and public tenant isolation.
+
+## Tech stack
+
+- **Frontend:** Next.js App Router, React, TypeScript, Tailwind CSS
+- **Backend:** NestJS, TypeScript
+- **Data:** PostgreSQL and Prisma
+- **LLM provider:** OpenAI-compatible Chat Completions API (`gpt-4o-mini` by
+  default)
 - **Package management:** npm workspaces
 
-## Requirements
+## Architecture
 
-- Node.js 20.16+ or 22.3+
-- npm
-- PostgreSQL
+```mermaid
+flowchart TD
+    User[Organization user] --> Web[Next.js frontend]
+    Web --> API[NestJS API]
+    API --> Auth[JWT cookie authentication]
+    Auth --> Tenant[Resolve organization from authenticated user]
+    Tenant --> Upload[PDF upload]
+    Upload --> Extract[PDF text extraction]
+    Extract --> Chunk[Page-scoped chunks and references]
+    Chunk --> DB[(PostgreSQL via Prisma)]
+    Visitor[Public visitor] --> PublicURL[Public assistant URL / iframe]
+    PublicURL --> PublicId[Assistant publicId]
+    PublicId --> Stored[Persisted Assistant lookup]
+    Stored --> Org[Stored organization association]
+    Org --> Understand[Question understanding]
+    Tenant --> Understand
+    Understand --> Retrieve[Tenant-scoped keyword retrieval]
+    DB --> Retrieve
+    Retrieve --> Decide[Deterministic System 1 decision]
+    Decide --> Generate[Grounded answer generation]
+    Generate --> Result[Answer and document/page sources]
+```
+
+The authenticated tenant is derived server-side from the user identified by the
+JWT. For public requests, the backend resolves the public ID through the
+persisted Assistant record and uses its stored organization association.
+Client-supplied `organizationId` is never used to choose a tenant. Document
+chunks carry their organization ID explicitly, and retrieval filters by that
+tenant.
+
+## Authentication and tenant isolation
+
+Registration creates a user and organization. Login and registration set a
+short-lived, HttpOnly `knowly_session` JWT cookie. Protected controllers use the
+authenticated user ID to resolve the user's organization; clients cannot switch
+organizations by adding an organization ID to a request. Public assistant
+identifiers are separate from admin authentication and do not grant access to
+protected APIs.
+
+## Document processing and references
+
+1. An authenticated user uploads a PDF (maximum 10 MB); only PDF MIME types and
+   PDF signatures are accepted.
+2. The backend stores it under a server-generated name in `UPLOAD_DIR`, scoped
+   to the authenticated organization.
+3. Text is extracted page by page and persisted in `DocumentPage`.
+4. Non-empty pages are split independently into approximately 1,000-character
+   chunks with approximately 150 characters of overlap. Chunks retain their
+   organization, document, page number, and page-local chunk index.
+5. A document is marked `READY` only after processing and persistence succeed;
+   processing failures mark it `FAILED`.
+
+The MVP limits each organization to 10 PDFs and each PDF to 20 pages.
+Processing is synchronous. Users can inspect their own document pages and
+chunks; a guessed document ID from another organization is not sufficient to
+access its data.
+
+## Question and answer pipeline
+
+- **Question understanding:** The LLM classifies and normalizes the question
+  and proposes retrieval keywords. Its structured response is validated.
+- **Retrieval:** Deterministic keyword matching searches only `READY` chunks in
+  the resolved organization and returns up to five relevant chunks. This is
+  not semantic or vector search.
+- **System 1:** Deterministic application logic selects `ANSWER_FROM_KNOWLEDGE`,
+  `NO_RELEVANT_KNOWLEDGE`, or `CLARIFICATION_REQUIRED`.
+- **Answer generation:** Only retrieved tenant-scoped context is sent to the
+  answer-generation model. Source metadata is attached from retrieval results,
+  not invented by the model. No-knowledge and clarification responses do not
+  invoke answer generation.
+
+The LLM improves question understanding and response phrasing; it does not
+choose the organization, retrieve across tenants, or make the structured
+decision. These grounding controls are not formal claim-level verification.
+
+## Public assistant and embed
+
+An authenticated organization user can create or retrieve its single persisted
+assistant. Its random public ID resolves to that assistant and its organization
+on the backend. Public routes do not require a login and return an answer,
+decision, and document/page sources without exposing organization IDs or
+retrieval scores.
+
+Embed flow:
+
+```text
+Public assistant → Embed URL → iframe → Visitor question
+→ Public answer API → Tenant-scoped retrieval
+→ Grounded answer → Sources
+```
+
+The public page is `/assistant/{publicId}`; the iframe page is
+`/embed/assistant/{publicId}`. To embed an assistant, replace
+`ASSISTANT_PUBLIC_ID` with the public ID returned by `POST /assistants`:
+
+```html
+<iframe
+  src="http://localhost:3000/embed/assistant/ASSISTANT_PUBLIC_ID"
+  width="100%"
+  height="600"
+  style="border:0;"
+  title="Knowly Assistant">
+</iframe>
+```
+
+No authentication is required for the public embed. The public ID maps to one
+persisted assistant; visitors never supply an `organizationId`, and the
+backend resolves the organization. Production deployments should configure
+appropriate allowed embedding origins at the hosting/security-header layer.
+
+## API summary
+
+All endpoints are relative to the backend base URL (default
+`http://localhost:4000`).
+
+| Method | Path | Access | Purpose |
+| --- | --- | --- | --- |
+| `GET` | `/health` | Public | API liveness |
+| `GET` | `/health/database` | Public | Database connectivity check |
+| `POST` | `/auth/register` | Public | Create account and organization |
+| `POST` | `/auth/login` | Public | Sign in and set session cookie |
+| `POST` | `/auth/logout` | Public | Clear session cookie |
+| `GET` | `/auth/me` | JWT | Get current account |
+| `GET` | `/organization/me` | JWT | Get current organization and assistant |
+| `GET` | `/organization/me/documents` | JWT | List current organization's documents |
+| `POST` | `/assistants` | JWT | Get or create current organization's assistant |
+| `POST` | `/documents` | JWT | Upload and process a PDF |
+| `GET` | `/documents/:id/pages` | JWT | Read pages/chunks for an owned document |
+| `POST` | `/documents/understand-question` | JWT | Inspect structured question understanding |
+| `POST` | `/documents/search` | JWT | Search current organization's knowledge |
+| `POST` | `/documents/decide` | JWT | Run decision and retrieval without final answer |
+| `POST` | `/documents/answer` | JWT | Run the authenticated grounded-answer flow |
+| `GET` | `/public/assistants/:publicId` | Public | Resolve public assistant information |
+| `POST` | `/public/assistants/:publicId/answer` | Public | Ask the public assistant |
+
+The backend global validation pipe rejects unknown request properties and
+validates question input. Protected document and organization endpoints require
+the JWT cookie; the public endpoints use only the public ID. See the
+[`backend/requests/`](./backend/requests) examples for sample API requests.
+
+## Environment variables
+
+Copy the examples to local environment files and replace placeholders:
+
+```powershell
+Copy-Item backend\.env.example backend\.env
+Copy-Item frontend\.env.example frontend\.env.local
+```
+
+| Variable | Used by | Purpose |
+| --- | --- | --- |
+| `DATABASE_URL` | Backend | PostgreSQL connection string |
+| `PORT` | Backend | API port; defaults to `4000` |
+| `JWT_SECRET` | Backend | Random signing secret; use at least 32 characters |
+| `FRONTEND_URL` | Backend | Allowed frontend origin for credentialed CORS |
+| `COOKIE_SAME_SITE` | Backend | `lax` locally; `none` for cross-site HTTPS |
+| `UPLOAD_DIR` | Backend | Local PDF storage directory; defaults to `./uploads` |
+| `LLM_API_KEY` | Backend | Provider API key; required for LLM-backed questions |
+| `OPENAI_MODEL` | Backend | Optional model override; defaults to `gpt-4o-mini` |
+| `PUBLIC_APP_URL` | Backend | Frontend base URL used to build public links |
+| `NEXT_PUBLIC_API_URL` | Frontend | Backend base URL; local default `http://localhost:4000` |
+| `NEXT_PUBLIC_APP_URL` | Frontend | Frontend base URL; local default `http://localhost:3000` |
+
+Do not commit `.env` files or production credentials. The checked-in `.env.example`
+files contain placeholders, not usable secrets. The tests mock provider calls
+and do not need a live LLM API key.
 
 ## Local setup
 
-Install dependencies from the repository root:
+Requirements: Node.js 20.16+ or 22.3+, npm, and PostgreSQL.
+
+From the repository root:
 
 ```bash
 npm install
 ```
 
-The frontend reads its API and public application URLs from
-`frontend/.env.local`. Copy the example file to create it:
-
-```powershell
-Copy-Item frontend\.env.example frontend\.env.local
-```
-
-Copy the backend environment template and set `DATABASE_URL` to your local
-PostgreSQL connection string. Set `JWT_SECRET` to a random secret of at least
-32 characters. `FRONTEND_URL` controls credentialed API access, and
-`COOKIE_SAME_SITE` defaults to `lax` for local development. For a cross-site
-production frontend/API deployment, set it to `none` and use HTTPS; the cookie
-will then be marked Secure. `UPLOAD_DIR` defaults to `./uploads`, relative to
-the backend working directory. Nest loads the backend `.env` file automatically.
-
-```powershell
-Copy-Item backend\.env.example backend\.env
-```
-
-Create the database (for example, a PostgreSQL database named `knowly`), then
-apply the initial migration and generate the Prisma client:
+Create a local PostgreSQL database (for example, `knowly`), configure
+`backend/.env` and `frontend/.env.local` as above, then apply migrations and
+generate the Prisma client:
 
 ```bash
-npm run db:migrate --workspace backend
+npm run db:deploy --workspace backend
 npm run db:generate --workspace backend
 ```
 
-This applies the initial schema and subsequent migrations, including nullable
-document page counts, the page-level `DocumentPage` table, and page-scoped
-`DocumentChunk` uniqueness.
+For local schema development when creating a new migration, use
+`npm run db:migrate --workspace backend` instead of `db:deploy`.
 
-The backend reads `PORT` from the environment and defaults to `4000`.
-
-Start the frontend and backend in separate terminals:
+Start the backend and frontend in separate terminals:
 
 ```bash
-npm run dev:frontend
 npm run dev:backend
+npm run dev:frontend
 ```
 
-The landing page is available at [http://localhost:3000](http://localhost:3000). The API listens on port `4000` by default; its health check is [http://localhost:4000/health](http://localhost:4000/health).
-The database check is available at [http://localhost:4000/health/database](http://localhost:4000/health/database).
-Register at [http://localhost:3000/register](http://localhost:3000/register) or
-sign in at [http://localhost:3000/login](http://localhost:3000/login). A
-successful login or registration sets an HttpOnly cookie and opens
-[http://localhost:3000/dashboard](http://localhost:3000/dashboard). The
-organization dashboard loads the user's organization and assistant from
-`GET /organization/me`, and its documents from
-`GET /organization/me/documents`. Both endpoints derive the organization from
-the authenticated user. The dashboard uploads PDFs through the protected
-`POST /documents` endpoint. Uploads are limited to 10 MB and stored under the
-configured backend `UPLOAD_DIR`, using the authenticated organization ID and a
-server-generated document UUID. Each organization can store up to 10 PDFs, and
-each PDF is limited to 20 pages.
+Open [http://localhost:3000](http://localhost:3000). The API health check is
+[http://localhost:4000/health](http://localhost:4000/health), and the database
+check is [http://localhost:4000/health/database](http://localhost:4000/health/database).
+Register at `/register` or sign in at `/login`.
 
-## PDF Processing
+## Demo data
 
-The database migration for PDF pages is named
-`20260927160000_document_pages`. Apply new migrations and regenerate Prisma
-Client after pulling schema changes:
+With migrations applied, create or update the two deterministic demo tenants:
 
 ```bash
-npm run db:migrate --workspace backend
-npm run db:generate --workspace backend
+npm run seed:demo
 ```
 
-PDF upload is followed by synchronous backend text extraction:
+The seed is safe to rerun. It creates distinct READY knowledge documents,
+page-level chunks, and active assistants for:
 
-```text
-PDF upload
-→ local tenant-scoped storage
-→ page-by-page PDF text extraction
-→ page text stored in DocumentPage
-→ deterministic per-page chunking
-→ chunks stored in DocumentChunk
-→ Document marked READY
-```
+| Organization | Demo login | Password |
+| --- | --- | --- |
+| Knowly Demo - Northstar Consulting | `demo@northstar.example` | `Knowly-Demo-2026!` |
+| Knowly Demo - Apex University | `demo@apex.example` | `Knowly-Demo-2026!` |
 
-Each PDF page is stored separately in `DocumentPage`, including pages with no
-extractable text. Non-empty pages are independently split into approximately
-1000-character chunks with approximately 150 characters of overlap; chunk
-indexes restart on each page. Each chunk retains its page number and tenant ID
-for future source references. Empty pages remain stored and produce no chunks.
-Successful processing sets the actual page count and changes the document
-status to `READY` only after page and chunk persistence succeeds. If extraction
-or chunk persistence fails, the document is marked `FAILED` and the original
-PDF is retained. Processing is synchronous and intended for this MVP;
-retrieval, embeddings, and LLM processing are future steps. Authenticated users
-can inspect pages and their chunks for their own documents via
-`GET /documents/:id/pages`.
+These are local demo credentials only; do not use them in a deployed
+environment. The Northstar employee handbook and Apex scholarship guide have
+deliberately different content to make organization isolation easy to
+demonstrate. Public assistant IDs are generated and stored in the database;
+retrieve them through the authenticated dashboard/API rather than assuming a
+fixed value.
 
-Chunking uses a target size of approximately 1000 characters with 150
-characters of overlap, independently per page. Each organization is limited to
-10 documents, and each PDF is limited to 20 pages; both limits are enforced by
-the backend.
+## Tests, builds, and lint
 
-You can also verify the API from PowerShell. Registration/login set an
-HttpOnly cookie in the web session; `/auth/me` uses that cookie:
-
-```powershell
-$api = "http://localhost:4000"
-$body = @{
-  name = "Ada Lovelace"
-  organizationName = "Analytical Engines"
-  email = "ada@example.com"
-  password = "use-a-unique-password"
-} | ConvertTo-Json
-
-Invoke-RestMethod -Uri "$api/auth/register" -Method Post `
-  -ContentType "application/json" -Body $body -SessionVariable knowlySession
-Invoke-RestMethod -Uri "$api/auth/me" -WebSession $knowlySession
-```
-
-To verify login, use a new web session with the same email/password at
-`POST /auth/login`, then call `GET /auth/me` with that session.
-
-If you use the VS Code REST Client extension, open
-[`backend/requests/auth.http`](./backend/requests/auth.http) and
-[`backend/requests/health.http`](./backend/requests/health.http), and
-[`backend/requests/organization.http`](./backend/requests/organization.http).
-Run the register request with a new email, then run login and the organization
-requests; REST Client retains the HttpOnly cookie for requests to the local API.
-Change the sample email/password at the top of `auth.http` for your test
-account. Use [`backend/requests/documents.http`](./backend/requests/documents.http)
-to test authenticated PDF uploads; update its sample file path to a local PDF.
-
-## Generate test PDFs
-
-The backend includes a script that creates sample university and company PDFs,
-along with files for upload validation (a PDF larger than 10 MB and an empty
-file). From the repository root, run:
+The tenant integration tests use Node's built-in test runner and `tsx`; no
+additional test framework is required. They require a reachable PostgreSQL
+database, applied migrations, and `backend/.env`. The test suite creates and
+removes isolated test organizations and mocks the external LLM API.
 
 ```bash
-npm run seed:pdfs --workspace backend
-```
-
-The generated files are written to `backend/test_pdfs/`, grouped into
-`apex_university/`, `nexacorp_solutions/`, and `edge_cases/`. For example, use
-`backend/test_pdfs/apex_university/Scholarship_and_Aid_Rules.pdf` to test a
-valid upload. Set `@pdfPath` in
-[`backend/requests/documents.http`](./backend/requests/documents.http) to the
-absolute path of the generated PDF you want to upload. The empty and oversized
-files in `edge_cases/` should be rejected by the upload endpoint.
-
-Build both applications with:
-
-```bash
+npm run test:tenant
 npm run build
+npm run lint --workspace frontend
 ```
 
-## Project structure
+Check Prisma configuration and migration state with:
+
+```bash
+npx prisma validate --schema backend/prisma/schema.prisma
+npm run db:deploy --workspace backend
+```
+
+## Security considerations and limitations
+
+- Tenant identity is derived server-side from the authenticated user or
+  persisted public assistant. Never trust a client-provided organization ID.
+- Public assistant IDs are random public identifiers, not credentials for
+  administrative APIs. Public endpoint responses omit organization IDs and
+  internal retrieval scores.
+- JWTs are stored in HttpOnly cookies; use HTTPS and secure cookie settings in
+  production. Configure CORS and allowed iframe origins for the deployment.
+- Uploaded PDFs are stored locally in this MVP, and PDF processing is
+  synchronous; production deployments should consider durable object storage
+  and asynchronous processing.
+- Retrieval is keyword-based; embeddings, vector search, and hybrid retrieval
+  are not implemented.
+- Grounding instructions and backend-attached sources do not provide formal
+  claim-level answer verification.
+- Production rate limiting and analytics are not implemented.
+- Production deployment and production-scale behavior have not been tested.
+- Live LLM-backed answers require a valid `LLM_API_KEY`; integration tests
+  mock provider responses.
+
+## Repository layout
 
 ```text
-frontend/   Next.js web application
-backend/    NestJS API
+frontend/                 Next.js App Router application
+backend/                  NestJS API and Prisma schema/migrations
+backend/prisma/            Database schema and migrations
+backend/scripts/           Demo data and PDF utility scripts
+backend/test/              Tenant-isolation integration tests
 ```
