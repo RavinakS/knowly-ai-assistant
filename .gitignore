@@ -3,6 +3,7 @@ node_modules/
 out/
 dist/
 coverage/
+backend/uploads/
 *.tsbuildinfo
 npm-debug.log*
 yarn-debug.log*

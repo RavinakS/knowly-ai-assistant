@@ -2,7 +2,13 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  ChangeEvent,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   apiBaseUrl,
   responseErrorMessage,
@@ -16,10 +22,9 @@ interface OrganizationAccount {
 
 interface OrganizationDocument {
   id: string;
-  filename: string;
   originalFilename: string;
   fileSize: number;
-  pageCount: number;
+  pageCount: number | null;
   mimeType: string;
   status: "PROCESSING" | "READY" | "FAILED";
   createdAt: string;
@@ -51,10 +56,9 @@ function isDocument(value: unknown): value is OrganizationDocument {
   return (
     isRecord(value) &&
     typeof value.id === "string" &&
-    typeof value.filename === "string" &&
     typeof value.originalFilename === "string" &&
     typeof value.fileSize === "number" &&
-    typeof value.pageCount === "number" &&
+    (typeof value.pageCount === "number" || value.pageCount === null) &&
     typeof value.mimeType === "string" &&
     (value.status === "PROCESSING" ||
       value.status === "READY" ||
@@ -86,10 +90,14 @@ export function DashboardAccount() {
   );
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
-  const publicAppUrl = useMemo(() => {
-    const configuredUrl = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/+$/, "");
-    return configuredUrl || (typeof window === "undefined" ? "" : window.location.origin);
-  }, []);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadMessage, setUploadMessage] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [documentsRefresh, setDocumentsRefresh] = useState(0);
+  const publicAppUrl =
+    process.env.NEXT_PUBLIC_APP_URL?.replace(/\/+$/, "") ||
+    (typeof window === "undefined" ? "" : window.location.origin);
 
   useEffect(() => {
     if (!apiBaseUrl) {
@@ -163,7 +171,7 @@ export function DashboardAccount() {
 
     void loadDashboard();
     return () => controller.abort();
-  }, [router]);
+  }, [documentsRefresh, router]);
 
   const assistantUrl =
     account?.assistant && publicAppUrl
@@ -182,6 +190,59 @@ export function DashboardAccount() {
       setActionMessage("Clipboard access is unavailable in this browser.");
     }
   }, []);
+
+  async function handleFileSelected(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = "";
+    setUploadError(null);
+    setUploadMessage(null);
+    if (!file) {
+      return;
+    }
+    if (file.size === 0) {
+      setUploadError("The selected file is empty.");
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setUploadError("File must be 10 MB or smaller.");
+      return;
+    }
+    if (file.type && file.type !== "application/pdf") {
+      setUploadError("Only PDF files are allowed.");
+      return;
+    }
+    if (!apiBaseUrl) {
+      setUploadError("Set NEXT_PUBLIC_API_URL to connect to the Knowly API.");
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append("file", file);
+    setIsUploading(true);
+    try {
+      const response = await fetch(`${apiBaseUrl}/documents`, {
+        method: "POST",
+        credentials: "include",
+        body: formData,
+      });
+      if (response.status === 401) {
+        router.replace("/login");
+        return;
+      }
+      if (!response.ok) {
+        setUploadError(
+          await responseErrorMessage(response, "Unable to upload this PDF."),
+        );
+        return;
+      }
+      setUploadMessage("Upload successful");
+      setDocumentsRefresh((current) => current + 1);
+    } catch {
+      setUploadError("Could not reach the Knowly API. Check that the backend is running.");
+    } finally {
+      setIsUploading(false);
+    }
+  }
 
   async function handleLogout() {
     if (!apiBaseUrl) {
@@ -269,15 +330,32 @@ export function DashboardAccount() {
                 Your organization&apos;s reference documents
               </p>
             </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".pdf,application/pdf"
+              className="hidden"
+              onChange={handleFileSelected}
+            />
             <button
               type="button"
-              disabled
-              title="PDF upload will be available in a future step."
-              className="cursor-not-allowed rounded-lg bg-[#283d32] px-4 py-2.5 text-sm font-medium text-white opacity-55"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isUploading}
+              className="rounded-lg bg-[#283d32] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#354d3e] disabled:cursor-wait disabled:opacity-60"
             >
-              Upload PDF
+              {isUploading ? "Uploading..." : "Upload PDF"}
             </button>
           </div>
+          {uploadError && (
+            <p role="alert" className="mt-4 text-sm text-[#9d4237]">
+              {uploadError}
+            </p>
+          )}
+          {uploadMessage && (
+            <p role="status" className="mt-4 text-sm text-[#526a54]">
+              {uploadMessage}
+            </p>
+          )}
 
           {documentsError ? (
             <p role="alert" className="mt-6 rounded-lg bg-[#fff2ef] p-4 text-sm text-[#9d4237]">
@@ -302,12 +380,17 @@ export function DashboardAccount() {
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium">{document.originalFilename}</p>
                     <p className="mt-1 text-xs text-[#858a81]">
-                      {document.pageCount} {document.pageCount === 1 ? "page" : "pages"} ·{" "}
-                      {formatFileSize(document.fileSize)}
+                      {document.pageCount !== null
+                        ? `${document.pageCount} ${document.pageCount === 1 ? "page" : "pages"} · `
+                        : ""}
+                      {formatFileSize(document.fileSize)} ·{" "}
+                      {new Date(document.createdAt).toLocaleDateString()}
                     </p>
                   </div>
                   <span className="w-fit rounded-full bg-[#f1f3ee] px-2.5 py-1 text-xs text-[#64705f]">
-                    {document.status.toLowerCase()}
+                    {document.status === "PROCESSING"
+                      ? "Processing..."
+                      : document.status.toLowerCase()}
                   </span>
                 </li>
               ))}

@@ -1,0 +1,17 @@
+@baseUrl = http://localhost:4000
+@pdfPath = C:/path/to/your/document.pdf
+
+### Upload a PDF to the authenticated user's organization
+# Run register/login in auth.http first so REST Client has the HttpOnly cookie.
+POST {{baseUrl}}/documents
+Content-Type: multipart/form-data; boundary=KnowlyUploadBoundary
+
+--KnowlyUploadBoundary
+Content-Disposition: form-data; name="file"; filename="document.pdf"
+Content-Type: application/pdf
+
+< {{pdfPath}}
+--KnowlyUploadBoundary--
+
+### Refresh the authenticated organization's documents
+GET {{baseUrl}}/organization/me/documents

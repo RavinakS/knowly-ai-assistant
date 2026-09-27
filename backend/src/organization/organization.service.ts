@@ -51,7 +51,6 @@ export class OrganizationService {
       where: { organizationId: user.organizationId },
       select: {
         id: true,
-        filename: true,
         originalFilename: true,
         fileSize: true,
         pageCount: true,

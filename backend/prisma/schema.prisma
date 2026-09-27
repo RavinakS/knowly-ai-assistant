@@ -52,7 +52,7 @@ model Document {
   filename         String
   originalFilename String
   fileSize         Int
-  pageCount        Int
+  pageCount        Int?
   mimeType         String
   status           DocumentStatus  @default(PROCESSING)
   organization     Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)

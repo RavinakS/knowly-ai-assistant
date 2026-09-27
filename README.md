@@ -34,7 +34,8 @@ PostgreSQL connection string. Set `JWT_SECRET` to a random secret of at least
 32 characters. `FRONTEND_URL` controls credentialed API access, and
 `COOKIE_SAME_SITE` defaults to `lax` for local development. For a cross-site
 production frontend/API deployment, set it to `none` and use HTTPS; the cookie
-will then be marked Secure. Nest loads the backend `.env` file automatically.
+will then be marked Secure. `UPLOAD_DIR` defaults to `./uploads`, relative to
+the backend working directory. Nest loads the backend `.env` file automatically.
 
 ```powershell
 Copy-Item backend\.env.example backend\.env
@@ -47,6 +48,9 @@ apply the initial migration and generate the Prisma client:
 npm run db:migrate --workspace backend
 npm run db:generate --workspace backend
 ```
+
+This applies the initial schema and subsequent migrations, including making
+document page counts nullable until PDF processing is implemented.
 
 The backend reads `PORT` from the environment and defaults to `4000`.
 
@@ -66,7 +70,11 @@ successful login or registration sets an HttpOnly cookie and opens
 organization dashboard loads the user's organization and assistant from
 `GET /organization/me`, and its documents from
 `GET /organization/me/documents`. Both endpoints derive the organization from
-the authenticated user.
+the authenticated user. The dashboard uploads PDFs through the protected
+`POST /documents` endpoint. Uploads are limited to 10 MB and stored under the
+configured backend `UPLOAD_DIR`, using the authenticated organization ID and a
+server-generated document UUID. New documents have `PROCESSING` status and a
+`null` page count until the later PDF processing step.
 
 You can also verify the API from PowerShell. Registration/login set an
 HttpOnly cookie in the web session; `/auth/me` uses that cookie:
@@ -95,7 +103,26 @@ If you use the VS Code REST Client extension, open
 Run the register request with a new email, then run login and the organization
 requests; REST Client retains the HttpOnly cookie for requests to the local API.
 Change the sample email/password at the top of `auth.http` for your test
-account.
+account. Use [`backend/requests/documents.http`](./backend/requests/documents.http)
+to test authenticated PDF uploads; update its sample file path to a local PDF.
+
+## Generate test PDFs
+
+The backend includes a script that creates sample university and company PDFs,
+along with files for upload validation (a PDF larger than 10 MB and an empty
+file). From the repository root, run:
+
+```bash
+npm run seed:pdfs --workspace backend
+```
+
+The generated files are written to `backend/test_pdfs/`, grouped into
+`apex_university/`, `nexacorp_solutions/`, and `edge_cases/`. For example, use
+`backend/test_pdfs/apex_university/Scholarship_and_Aid_Rules.pdf` to test a
+valid upload. Set `@pdfPath` in
+[`backend/requests/documents.http`](./backend/requests/documents.http) to the
+absolute path of the generated PDF you want to upload. The empty and oversized
+files in `edge_cases/` should be rejected by the upload endpoint.
 
 Build both applications with:
 
