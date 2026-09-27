@@ -1,0 +1,81 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum DocumentStatus {
+  PROCESSING
+  READY
+  FAILED
+}
+
+model User {
+  id             String       @id @default(uuid()) @db.Uuid
+  email          String       @unique
+  passwordHash   String
+  name           String
+  organizationId String       @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId])
+}
+
+model Organization {
+  id        String          @id @default(uuid()) @db.Uuid
+  name      String
+  users     User[]
+  assistant Assistant?
+  documents Document[]
+  chunks    DocumentChunk[]
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+}
+
+model Assistant {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @unique @db.Uuid
+  token          String       @unique @default(uuid())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+model Document {
+  id               String          @id @default(uuid()) @db.Uuid
+  organizationId   String          @db.Uuid
+  filename         String
+  originalFilename String
+  fileSize         Int
+  pageCount        Int
+  mimeType         String
+  status           DocumentStatus  @default(PROCESSING)
+  organization     Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  chunks           DocumentChunk[]
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  @@unique([id, organizationId])
+  @@index([organizationId])
+}
+
+model DocumentChunk {
+  id             String       @id @default(uuid()) @db.Uuid
+  documentId     String       @db.Uuid
+  organizationId String       @db.Uuid
+  content        String       @db.Text
+  pageNumber     Int?
+  chunkIndex     Int
+  document       Document     @relation(fields: [documentId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+
+  @@unique([documentId, chunkIndex])
+  @@index([documentId])
+  @@index([organizationId])
+}
