@@ -11,9 +11,17 @@ export default function Home() {
             </span>
             <span className="text-lg font-semibold tracking-tight">knowly</span>
           </Link>
-          <span className="rounded-full border border-[#dedfd6] px-3.5 py-1.5 text-xs font-medium text-[#697168]">
-            Early foundation
-          </span>
+          <nav className="flex items-center gap-4 text-sm">
+            <Link href="/login" className="font-medium text-[#526a54] hover:underline">
+              Sign in
+            </Link>
+            <Link
+              href="/register"
+              className="rounded-lg bg-[#283d32] px-4 py-2.5 font-medium text-white transition-colors hover:bg-[#354d3e]"
+            >
+              Create account
+            </Link>
+          </nav>
         </header>
 
         <section className="grid flex-1 items-center gap-16 py-16 lg:grid-cols-[1.05fr_0.95fr] lg:py-24">
