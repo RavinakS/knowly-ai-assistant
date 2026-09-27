@@ -1,5 +1,6 @@
 @baseUrl = http://localhost:4000
 @pdfPath = C:/path/to/your/document.pdf
+@documentId = def71902-1888-499d-9f78-c60f750f4125
 
 ### Upload a PDF to the authenticated user's organization
 # Run register/login in auth.http first so REST Client has the HttpOnly cookie.
@@ -15,3 +16,7 @@ Content-Type: application/pdf
 
 ### Refresh the authenticated organization's documents
 GET {{baseUrl}}/organization/me/documents
+
+### Inspect extracted page text for a document you own
+# Replace the ID with a document ID from a successful upload response.
+GET {{baseUrl}}/documents/{{documentId}}/pages

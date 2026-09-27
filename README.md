@@ -10,7 +10,7 @@ Knowly is a foundation for a multi-tenant AI knowledge and decision assistant. O
 
 ## Requirements
 
-- Node.js 20.9 or later
+- Node.js 20.16+ or 22.3+
 - npm
 - PostgreSQL
 
@@ -49,8 +49,8 @@ npm run db:migrate --workspace backend
 npm run db:generate --workspace backend
 ```
 
-This applies the initial schema and subsequent migrations, including making
-document page counts nullable until PDF processing is implemented.
+This applies the initial schema and subsequent migrations, including nullable
+document page counts and the page-level `DocumentPage` table.
 
 The backend reads `PORT` from the environment and defaults to `4000`.
 
@@ -73,8 +73,36 @@ organization dashboard loads the user's organization and assistant from
 the authenticated user. The dashboard uploads PDFs through the protected
 `POST /documents` endpoint. Uploads are limited to 10 MB and stored under the
 configured backend `UPLOAD_DIR`, using the authenticated organization ID and a
-server-generated document UUID. New documents have `PROCESSING` status and a
-`null` page count until the later PDF processing step.
+server-generated document UUID.
+
+## PDF Processing
+
+The database migration for PDF pages is named
+`20260927160000_document_pages`. Apply new migrations and regenerate Prisma
+Client after pulling schema changes:
+
+```bash
+npm run db:migrate --workspace backend
+npm run db:generate --workspace backend
+```
+
+PDF upload is followed by synchronous backend text extraction:
+
+```text
+PDF upload
+→ local tenant-scoped storage
+→ page-by-page PDF text extraction
+→ page text stored in DocumentPage
+→ Document marked READY
+```
+
+Each PDF page is stored separately in `DocumentPage`, including pages with no
+extractable text. Successful processing sets the actual page count and changes
+the document status to `READY`. If extraction fails, the document is marked
+`FAILED` and the original PDF is retained. Processing is synchronous and
+intended for this MVP; chunking, retrieval, embeddings, and LLM processing are
+future steps. Authenticated users can inspect pages for their own documents via
+`GET /documents/:id/pages`.
 
 You can also verify the API from PowerShell. Registration/login set an
 HttpOnly cookie in the web session; `/auth/me` uses that cookie:

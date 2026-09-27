@@ -3,15 +3,26 @@ import {
   Injectable,
   InternalServerErrorException,
   Logger,
+  NotFoundException,
   PayloadTooLargeException,
   UnsupportedMediaTypeException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { DocumentStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { DocumentProcessingService } from './document-processing.service.js';
 import { LocalUploadStorage } from './local-upload-storage.js';
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
+
+interface UploadedDocument {
+  id: string;
+  originalFilename: string;
+  fileSize: number;
+  mimeType: string;
+  status: DocumentStatus;
+  createdAt: Date;
+}
 
 @Injectable()
 export class DocumentsService {
@@ -20,6 +31,7 @@ export class DocumentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly storage: LocalUploadStorage,
+    private readonly processing: DocumentProcessingService,
   ) {}
 
   async upload(userId: string, file: Express.Multer.File) {
@@ -57,8 +69,9 @@ export class DocumentsService {
     }
 
     const stored = await this.storage.store(user.organizationId, file.buffer);
+    let document: UploadedDocument;
     try {
-      const document = await this.prisma.document.create({
+      document = await this.prisma.document.create({
         data: {
           id: stored.id,
           organizationId: user.organizationId,
@@ -78,7 +91,6 @@ export class DocumentsService {
           createdAt: true,
         },
       });
-      return document;
     } catch (error) {
       try {
         await this.storage.remove(stored.path);
@@ -96,5 +108,37 @@ export class DocumentsService {
         'Unable to save the uploaded document.',
       );
     }
+
+    const processingResult = await this.processing.process(
+      stored.id,
+      user.organizationId,
+      stored.path,
+    );
+    return { ...document, ...processingResult };
+  }
+
+  async getPagesForUser(userId: string, documentId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { organizationId: true },
+    });
+    if (!user) {
+      throw new UnauthorizedException();
+    }
+
+    const document = await this.prisma.document.findFirst({
+      where: { id: documentId, organizationId: user.organizationId },
+      select: { id: true },
+    });
+    if (!document) {
+      throw new NotFoundException('Document not found.');
+    }
+
+    const pages = await this.prisma.documentPage.findMany({
+      where: { documentId: document.id, organizationId: user.organizationId },
+      select: { pageNumber: true, text: true },
+      orderBy: { pageNumber: 'asc' },
+    });
+    return { documentId: document.id, pages };
   }
 }

@@ -1,6 +1,8 @@
 import {
   BadRequestException,
   Controller,
+  Get,
+  Param,
   Post,
   UnsupportedMediaTypeException,
   UploadedFile,
@@ -51,5 +53,13 @@ export class DocumentsController {
     }
 
     return this.documentsService.upload(user.id, file);
+  }
+
+  @Get(':id/pages')
+  getPages(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') documentId: string,
+  ) {
+    return this.documentsService.getPagesForUser(user.id, documentId);
   }
 }

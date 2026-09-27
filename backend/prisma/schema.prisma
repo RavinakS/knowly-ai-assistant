@@ -32,6 +32,7 @@ model Organization {
   users     User[]
   assistant Assistant?
   documents Document[]
+  pages     DocumentPage[]
   chunks    DocumentChunk[]
   createdAt DateTime        @default(now())
   updatedAt DateTime        @updatedAt
@@ -57,10 +58,26 @@ model Document {
   status           DocumentStatus  @default(PROCESSING)
   organization     Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   chunks           DocumentChunk[]
+  pages            DocumentPage[]
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt
 
   @@unique([id, organizationId])
+  @@index([organizationId])
+}
+
+model DocumentPage {
+  id             String       @id @default(uuid()) @db.Uuid
+  documentId     String       @db.Uuid
+  organizationId String       @db.Uuid
+  pageNumber     Int
+  text           String       @db.Text
+  document       Document     @relation(fields: [documentId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+
+  @@unique([documentId, pageNumber])
+  @@index([documentId])
   @@index([organizationId])
 }
 

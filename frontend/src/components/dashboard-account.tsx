@@ -235,7 +235,22 @@ export function DashboardAccount() {
         );
         return;
       }
-      setUploadMessage("Upload successful");
+      const uploaded: unknown = await response.json();
+      if (
+        isRecord(uploaded) &&
+        uploaded.status === "FAILED"
+      ) {
+        setUploadError(
+          "The PDF was uploaded, but text extraction failed. The original file was retained.",
+        );
+        setDocumentsRefresh((current) => current + 1);
+        return;
+      }
+      setUploadMessage(
+        isRecord(uploaded) && uploaded.status === "READY"
+          ? "Upload successful. PDF text is ready."
+          : "Upload successful",
+      );
       setDocumentsRefresh((current) => current + 1);
     } catch {
       setUploadError("Could not reach the Knowly API. Check that the backend is running.");

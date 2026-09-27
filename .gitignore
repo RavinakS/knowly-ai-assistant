@@ -4,6 +4,7 @@ out/
 dist/
 coverage/
 backend/uploads/
+backend/test_pdfs/
 *.tsbuildinfo
 npm-debug.log*
 yarn-debug.log*
