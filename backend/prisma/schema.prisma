@@ -92,7 +92,9 @@ model DocumentChunk {
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   createdAt      DateTime     @default(now())
 
-  @@unique([documentId, chunkIndex])
+  @@unique([documentId, pageNumber, chunkIndex], map: "DocumentChunk_documentId_pageNumber_chunkIndex_key")
   @@index([documentId])
   @@index([organizationId])
+  @@index([documentId, pageNumber])
+  @@index([documentId, pageNumber, chunkIndex])
 }

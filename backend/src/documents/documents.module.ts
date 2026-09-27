@@ -6,6 +6,7 @@ import { DocumentProcessingService } from './document-processing.service.js';
 import { DocumentsService } from './documents.service.js';
 import { LocalUploadStorage } from './local-upload-storage.js';
 import { PdfTextExtractorService } from './pdf-text-extractor.service.js';
+import { ChunkingService } from './chunking.service.js';
 
 @Module({
   imports: [AuthModule],
@@ -13,6 +14,7 @@ import { PdfTextExtractorService } from './pdf-text-extractor.service.js';
   providers: [
     DocumentsService,
     DocumentProcessingService,
+    ChunkingService,
     LocalUploadStorage,
     PdfTextExtractorService,
     JwtAuthGuard,

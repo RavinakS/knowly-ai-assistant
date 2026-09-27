@@ -1,5 +1,7 @@
 import {
   BadRequestException,
+  ConflictException,
+  HttpException,
   Injectable,
   InternalServerErrorException,
   Logger,
@@ -71,25 +73,42 @@ export class DocumentsService {
     const stored = await this.storage.store(user.organizationId, file.buffer);
     let document: UploadedDocument;
     try {
-      document = await this.prisma.document.create({
-        data: {
-          id: stored.id,
-          organizationId: user.organizationId,
-          filename: stored.filename,
-          originalFilename,
-          fileSize: file.size,
-          pageCount: null,
-          mimeType: 'application/pdf',
-          status: DocumentStatus.PROCESSING,
-        },
-        select: {
-          id: true,
-          originalFilename: true,
-          fileSize: true,
-          mimeType: true,
-          status: true,
-          createdAt: true,
-        },
+      document = await this.prisma.$transaction(async (transaction) => {
+        await transaction.$queryRaw<{ locked: boolean }[]>`
+          WITH acquired AS MATERIALIZED (
+            SELECT pg_advisory_xact_lock(hashtextextended(${user.organizationId}, 0))
+          )
+          SELECT TRUE AS locked FROM acquired
+        `;
+        const documentCount = await transaction.document.count({
+          where: { organizationId: user.organizationId },
+        });
+        if (documentCount >= 10) {
+          throw new ConflictException(
+            'Your organization has reached the 10-document limit.',
+          );
+        }
+
+        return transaction.document.create({
+          data: {
+            id: stored.id,
+            organizationId: user.organizationId,
+            filename: stored.filename,
+            originalFilename,
+            fileSize: file.size,
+            pageCount: null,
+            mimeType: 'application/pdf',
+            status: DocumentStatus.PROCESSING,
+          },
+          select: {
+            id: true,
+            originalFilename: true,
+            fileSize: true,
+            mimeType: true,
+            status: true,
+            createdAt: true,
+          },
+        });
       });
     } catch (error) {
       try {
@@ -102,22 +121,59 @@ export class DocumentsService {
       }
       this.logger.error(
         'Failed to create the uploaded document record.',
-        error instanceof Error ? error.stack : undefined,
+        error instanceof HttpException
+          ? undefined
+          : error instanceof Error
+            ? error.stack
+            : undefined,
       );
+      if (error instanceof HttpException) {
+        throw error;
+      }
       throw new InternalServerErrorException(
         'Unable to save the uploaded document.',
       );
     }
 
-    const processingResult = await this.processing.process(
-      stored.id,
-      user.organizationId,
-      stored.path,
-    );
+    let processingResult;
+    try {
+      processingResult = await this.processing.process(
+        stored.id,
+        user.organizationId,
+        stored.path,
+      );
+    } catch (error) {
+      if (error instanceof PayloadTooLargeException) {
+        try {
+          await this.prisma.document.delete({
+            where: {
+              id_organizationId: {
+                id: stored.id,
+                organizationId: user.organizationId,
+              },
+            },
+          });
+          await this.storage.remove(stored.path);
+        } catch (cleanupError) {
+          this.logger.error(
+            `Failed to clean up an over-limit document ${stored.id}.`,
+            cleanupError instanceof Error ? cleanupError.stack : undefined,
+          );
+          throw new InternalServerErrorException(
+            'Unable to reject the uploaded document safely.',
+          );
+        }
+        throw error;
+      }
+      throw error;
+    }
     return { ...document, ...processingResult };
   }
 
   async getPagesForUser(userId: string, documentId: string) {
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(documentId)) {
+      throw new BadRequestException('Invalid document ID.');
+    }
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: { organizationId: true },
@@ -139,6 +195,19 @@ export class DocumentsService {
       select: { pageNumber: true, text: true },
       orderBy: { pageNumber: 'asc' },
     });
-    return { documentId: document.id, pages };
+    const chunks = await this.prisma.documentChunk.findMany({
+      where: { documentId: document.id, organizationId: user.organizationId },
+      select: { pageNumber: true, chunkIndex: true, content: true },
+      orderBy: [{ pageNumber: 'asc' }, { chunkIndex: 'asc' }],
+    });
+    return {
+      documentId: document.id,
+      pages: pages.map((page) => ({
+        ...page,
+        chunks: chunks
+          .filter((chunk) => chunk.pageNumber === page.pageNumber)
+          .map(({ chunkIndex, content }) => ({ chunkIndex, content })),
+      })),
+    };
   }
 }

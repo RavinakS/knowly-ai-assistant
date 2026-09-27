@@ -1,6 +1,6 @@
 # Knowly
 
-Knowly is a foundation for a multi-tenant AI knowledge and decision assistant. Organizations will be able to manage their own knowledge and provide grounded answers with document references. The project includes the web and API foundations, PostgreSQL database schema managed with Prisma, and JWT-based account authentication. Document processing and AI are not implemented yet.
+Knowly is a foundation for a multi-tenant AI knowledge and decision assistant. Organizations can manage their own knowledge and prepare to provide grounded answers with document references. The project includes the web and API foundations, PostgreSQL database schema managed with Prisma, JWT-based account authentication, PDF text extraction, and deterministic page-scoped chunking. Retrieval and AI are not implemented yet.
 
 ## Stack
 
@@ -50,7 +50,8 @@ npm run db:generate --workspace backend
 ```
 
 This applies the initial schema and subsequent migrations, including nullable
-document page counts and the page-level `DocumentPage` table.
+document page counts, the page-level `DocumentPage` table, and page-scoped
+`DocumentChunk` uniqueness.
 
 The backend reads `PORT` from the environment and defaults to `4000`.
 
@@ -73,7 +74,8 @@ organization dashboard loads the user's organization and assistant from
 the authenticated user. The dashboard uploads PDFs through the protected
 `POST /documents` endpoint. Uploads are limited to 10 MB and stored under the
 configured backend `UPLOAD_DIR`, using the authenticated organization ID and a
-server-generated document UUID.
+server-generated document UUID. Each organization can store up to 10 PDFs, and
+each PDF is limited to 20 pages.
 
 ## PDF Processing
 
@@ -93,16 +95,28 @@ PDF upload
 → local tenant-scoped storage
 → page-by-page PDF text extraction
 → page text stored in DocumentPage
+→ deterministic per-page chunking
+→ chunks stored in DocumentChunk
 → Document marked READY
 ```
 
 Each PDF page is stored separately in `DocumentPage`, including pages with no
-extractable text. Successful processing sets the actual page count and changes
-the document status to `READY`. If extraction fails, the document is marked
-`FAILED` and the original PDF is retained. Processing is synchronous and
-intended for this MVP; chunking, retrieval, embeddings, and LLM processing are
-future steps. Authenticated users can inspect pages for their own documents via
+extractable text. Non-empty pages are independently split into approximately
+1000-character chunks with approximately 150 characters of overlap; chunk
+indexes restart on each page. Each chunk retains its page number and tenant ID
+for future source references. Empty pages remain stored and produce no chunks.
+Successful processing sets the actual page count and changes the document
+status to `READY` only after page and chunk persistence succeeds. If extraction
+or chunk persistence fails, the document is marked `FAILED` and the original
+PDF is retained. Processing is synchronous and intended for this MVP;
+retrieval, embeddings, and LLM processing are future steps. Authenticated users
+can inspect pages and their chunks for their own documents via
 `GET /documents/:id/pages`.
+
+Chunking uses a target size of approximately 1000 characters with 150
+characters of overlap, independently per page. Each organization is limited to
+10 documents, and each PDF is limited to 20 pages; both limits are enforced by
+the backend.
 
 You can also verify the API from PowerShell. Registration/login set an
 HttpOnly cookie in the web session; `/auth/me` uses that cookie:
