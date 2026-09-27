@@ -1,0 +1,33 @@
+@baseUrl = http://localhost:4000
+@email = knowly.test@example.com
+@password = Change-this-test-password-123
+
+### Register a test account
+# Change @email to an address that has not already been registered.
+# The API sets the HttpOnly knowly_session cookie; REST Client keeps it for
+# requests to this host, so /auth/me can use it without exposing the JWT.
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{
+  "name": "Knowly Test User",
+  "organizationName": "Knowly Test Organization",
+  "email": "{{email}}",
+  "password": "{{password}}"
+}
+
+### Log in
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "{{email}}",
+  "password": "{{password}}"
+}
+
+### Get the authenticated account (run after register or login)
+GET {{baseUrl}}/auth/me
+
+### Verify unauthenticated requests are rejected
+# Clear the REST Client cookie jar before running this request to expect 401.
+GET {{baseUrl}}/auth/me

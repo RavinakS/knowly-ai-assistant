@@ -85,6 +85,13 @@ Invoke-RestMethod -Uri "$api/auth/me" -WebSession $knowlySession
 To verify login, use a new web session with the same email/password at
 `POST /auth/login`, then call `GET /auth/me` with that session.
 
+If you use the VS Code REST Client extension, open
+[`backend/requests/auth.http`](./backend/requests/auth.http) and
+[`backend/requests/health.http`](./backend/requests/health.http). Run the
+register request with a new email, then run login and `/auth/me`; REST Client
+retains the HttpOnly cookie for requests to the local API. Change the sample
+email/password at the top of `auth.http` for your test account.
+
 Build both applications with:
 
 ```bash
