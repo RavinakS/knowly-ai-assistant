@@ -3,15 +3,16 @@ import {
   BadRequestException,
   GatewayTimeoutException,
   Injectable,
+  Logger,
   ServiceUnavailableException,
-} from '@nestjs/common';
+} from "@nestjs/common";
 
 export const QUESTION_INTENTS = [
-  'knowledge_question',
-  'comparison',
-  'procedural_question',
-  'eligibility_question',
-  'unknown',
+  "knowledge_question",
+  "comparison",
+  "procedural_question",
+  "eligibility_question",
+  "unknown",
 ] as const;
 
 export type QuestionIntent = (typeof QUESTION_INTENTS)[number];
@@ -41,55 +42,67 @@ Classify requests to compare entities as comparison, how-to/process requests as 
 
 @Injectable()
 export class QuestionUnderstandingService {
+  private readonly logger = new Logger(QuestionUnderstandingService.name);
+
   async understand(question: string): Promise<UnderstoodQuestion> {
-    const normalizedInput = typeof question === 'string' ? question.trim() : '';
+    const normalizedInput = typeof question === "string" ? question.trim() : "";
     if (!normalizedInput) {
-      throw new BadRequestException('A non-empty question is required.');
+      throw new BadRequestException("A non-empty question is required.");
     }
     if (normalizedInput.length > MAX_QUESTION_LENGTH) {
-      throw new BadRequestException('The question must be 1000 characters or fewer.');
+      throw new BadRequestException(
+        "The question must be 1000 characters or fewer.",
+      );
     }
 
     const apiKey = process.env.LLM_API_KEY?.trim();
     if (!apiKey) {
       throw new ServiceUnavailableException(
-        'Question understanding is not configured.',
+        "Question understanding is not configured.",
       );
     }
 
     let response: Response;
     try {
-      response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
+      response = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
         headers: {
           Authorization: `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
         body: JSON.stringify({
-          model: process.env.OPENAI_MODEL?.trim() || 'gpt-4o-mini',
+          model: process.env.OPENAI_MODEL?.trim() || "gpt-4o-mini",
           temperature: 0,
-          response_format: { type: 'json_object' },
+          response_format: { type: "json_object" },
           messages: [
-            { role: 'system', content: SYSTEM_PROMPT },
-            { role: 'user', content: normalizedInput },
+            { role: "system", content: SYSTEM_PROMPT },
+            { role: "user", content: normalizedInput },
           ],
         }),
       });
     } catch (error) {
-      if (error instanceof Error && error.name === 'TimeoutError') {
+      if (error instanceof Error && error.name === "TimeoutError") {
+        this.logger.warn("Question understanding provider timed out.");
         throw new GatewayTimeoutException(
-          'Question understanding timed out. Please try again.',
+          "Question understanding timed out. Please try again.",
         );
       }
+      this.logger.warn("Question understanding provider request failed.");
       throw new BadGatewayException(
-        'The question understanding provider is unavailable.',
+        "The question understanding provider is unavailable.",
       );
     }
 
     if (!response.ok) {
+      const errorBody = await response.text();
+
+      this.logger.warn(
+        `Question understanding provider returned HTTP ${response.status}: ${errorBody}`,
+      );
+
       throw new BadGatewayException(
-        'The question understanding provider could not process the request.',
+        "The question understanding provider could not process the request.",
       );
     }
 
@@ -98,14 +111,14 @@ export class QuestionUnderstandingService {
       payload = await response.json();
     } catch {
       throw new BadGatewayException(
-        'The question understanding provider returned an invalid response.',
+        "The question understanding provider returned an invalid response.",
       );
     }
 
     const content = getMessageContent(payload);
     if (content === null) {
       throw new BadGatewayException(
-        'The question understanding provider returned an invalid response.',
+        "The question understanding provider returned an invalid response.",
       );
     }
 
@@ -114,7 +127,7 @@ export class QuestionUnderstandingService {
       parsed = JSON.parse(content);
     } catch {
       throw new BadGatewayException(
-        'The question understanding provider returned invalid JSON.',
+        "The question understanding provider returned invalid JSON.",
       );
     }
 
@@ -123,7 +136,11 @@ export class QuestionUnderstandingService {
 }
 
 function getMessageContent(payload: unknown): string | null {
-  if (typeof payload !== 'object' || payload === null || !('choices' in payload)) {
+  if (
+    typeof payload !== "object" ||
+    payload === null ||
+    !("choices" in payload)
+  ) {
     return null;
   }
   const choices = payload.choices;
@@ -131,36 +148,40 @@ function getMessageContent(payload: unknown): string | null {
     return null;
   }
   const first = choices[0];
-  if (typeof first !== 'object' || first === null || !('message' in first)) {
+  if (typeof first !== "object" || first === null || !("message" in first)) {
     return null;
   }
   const message = first.message;
-  if (typeof message !== 'object' || message === null || !('content' in message)) {
+  if (
+    typeof message !== "object" ||
+    message === null ||
+    !("content" in message)
+  ) {
     return null;
   }
-  return typeof message.content === 'string' ? message.content : null;
+  return typeof message.content === "string" ? message.content : null;
 }
 
 function validateUnderstoodQuestion(value: unknown): UnderstoodQuestion {
-  if (typeof value !== 'object' || value === null) {
+  if (typeof value !== "object" || value === null) {
     throw invalidResponse();
   }
 
   if (
-    !('intent' in value) ||
-    !('normalizedQuestion' in value) ||
-    !('requiresKnowledgeBase' in value) ||
-    !('keywords' in value)
+    !("intent" in value) ||
+    !("normalizedQuestion" in value) ||
+    !("requiresKnowledgeBase" in value) ||
+    !("keywords" in value)
   ) {
     throw invalidResponse();
   }
   const { intent, normalizedQuestion, requiresKnowledgeBase, keywords } = value;
   if (
     !isQuestionIntent(intent) ||
-    typeof normalizedQuestion !== 'string' ||
+    typeof normalizedQuestion !== "string" ||
     !normalizedQuestion.trim() ||
     normalizedQuestion.length > MAX_QUESTION_LENGTH ||
-    typeof requiresKnowledgeBase !== 'boolean' ||
+    typeof requiresKnowledgeBase !== "boolean" ||
     !Array.isArray(keywords) ||
     keywords.length > MAX_KEYWORDS ||
     !keywords.every(isKeyword)
@@ -178,21 +199,19 @@ function validateUnderstoodQuestion(value: unknown): UnderstoodQuestion {
 
 function isQuestionIntent(value: unknown): value is QuestionIntent {
   return (
-    typeof value === 'string' &&
+    typeof value === "string" &&
     QUESTION_INTENTS.some((intent) => intent === value)
   );
 }
 
 function isKeyword(value: unknown): value is string {
   return (
-    typeof value === 'string' &&
-    value.trim().length > 0 &&
-    value.length <= 100
+    typeof value === "string" && value.trim().length > 0 && value.length <= 100
   );
 }
 
 function invalidResponse(): BadGatewayException {
   return new BadGatewayException(
-    'The question understanding provider returned an invalid structured response.',
+    "The question understanding provider returned an invalid structured response.",
   );
 }
