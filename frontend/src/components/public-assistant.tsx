@@ -144,18 +144,28 @@ export function PublicAssistant({
         </form>
 
         {error ? (
-          <p role="alert" className="mt-6 rounded-xl bg-red-50 p-4 text-sm text-red-800">
+          <p
+            role="alert"
+            className="mt-6 rounded-xl bg-red-50 p-4 text-sm text-red-800"
+          >
             {error}
           </p>
         ) : null}
 
         {result ? (
-          <section aria-live="polite" className="mt-8 border-t border-black/10 pt-6">
+          <section
+            aria-live="polite"
+            className="mt-8 border-t border-black/10 pt-6"
+          >
             <h2 className="text-lg font-semibold">Answer</h2>
-            <p className="mt-3 whitespace-pre-wrap leading-7">{result.answer}</p>
+            <p className="mt-3 whitespace-pre-wrap leading-7">
+              {result.answer}
+            </p>
             {result.sources.length ? (
               <div className="mt-6">
-                <h3 className="text-sm font-semibold text-neutral-700">Sources</h3>
+                <h3 className="text-sm font-semibold text-neutral-700">
+                  Sources
+                </h3>
                 <ul className="mt-2 space-y-1 text-sm text-neutral-600">
                   {result.sources.map((source) => (
                     <li key={`${source.documentName}:${source.pageNumber}`}>

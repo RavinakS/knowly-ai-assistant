@@ -1,8 +1,12 @@
-import { Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service.js';
-import { AnswerPipelineService } from '../documents/answer-pipeline.service.js';
+import {
+  Injectable,
+  NotFoundException,
+  UnauthorizedException,
+} from "@nestjs/common";
+import { PrismaService } from "../prisma/prisma.service.js";
+import { AnswerPipelineService } from "../documents/answer-pipeline.service.js";
 
-const ASSISTANT_NAME = 'Organization Assistant';
+const ASSISTANT_NAME = "Organization Assistant";
 
 @Injectable()
 export class AssistantService {
@@ -26,9 +30,9 @@ export class AssistantService {
       update: {},
       select: { id: true, token: true, isActive: true },
     });
-    const baseUrl = (process.env.PUBLIC_APP_URL || 'http://localhost:3000')
+    const baseUrl = (process.env.PUBLIC_APP_URL || "http://localhost:3000")
       .trim()
-      .replace(/\/+$/, '');
+      .replace(/\/+$/, "");
 
     return {
       id: assistant.id,
@@ -46,7 +50,7 @@ export class AssistantService {
       select: { organizationId: true, isActive: true },
     });
     if (!assistant || !assistant.isActive) {
-      throw new NotFoundException('Assistant not found.');
+      throw new NotFoundException("Assistant not found.");
     }
 
     return this.answerPipeline.answerForOrganization(
@@ -58,11 +62,17 @@ export class AssistantService {
   async getPublicInfo(publicId: string) {
     const assistant = await this.prisma.assistant.findUnique({
       where: { token: publicId },
-      select: { isActive: true },
+      select: { isActive: true, organization: { select: { name: true } } },
     });
+
+    console.log("assistant:", assistant);
+
     if (!assistant || !assistant.isActive) {
-      throw new NotFoundException('Assistant not found.');
+      throw new NotFoundException("Assistant not found.");
     }
-    return { name: ASSISTANT_NAME };
+    return {
+      organizationName: assistant.organization.name,
+      isActive: assistant.isActive,
+    };
   }
 }

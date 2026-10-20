@@ -1,5 +1,5 @@
 @baseUrl = http://localhost:4000
-@publicId = replace-with-public-id-from-create-response
+@publicId = JBqEQMykiNrEB3P3QUTstRYwwGF8f8chNI2fe1Jamb0
 
 ### Create or get the authenticated organization's public assistant
 # Run register/login in auth.http first.
