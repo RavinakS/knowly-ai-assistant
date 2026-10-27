@@ -2,17 +2,9 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import {
-  ChangeEvent,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
-import {
-  apiBaseUrl,
-  responseErrorMessage,
-} from "@/lib/auth-api";
+import { useCallback, useEffect, useState } from "react";
+import { apiBaseUrl, responseErrorMessage } from "@/lib/auth-api";
+import { Documents } from "./documents";
 
 interface OrganizationAccount {
   user: { id: string; email: string; name: string };
@@ -20,23 +12,16 @@ interface OrganizationAccount {
   assistant: { id: string; token: string } | null;
 }
 
-interface OrganizationDocument {
-  id: string;
-  originalFilename: string;
-  fileSize: number;
-  pageCount: number | null;
-  mimeType: string;
-  status: "PROCESSING" | "READY" | "FAILED";
-  createdAt: string;
-  updatedAt: string;
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
 function isOrganizationAccount(value: unknown): value is OrganizationAccount {
-  if (!isRecord(value) || !isRecord(value.user) || !isRecord(value.organization)) {
+  if (
+    !isRecord(value) ||
+    !isRecord(value.user) ||
+    !isRecord(value.organization)
+  ) {
     return false;
   }
   return (
@@ -52,49 +37,15 @@ function isOrganizationAccount(value: unknown): value is OrganizationAccount {
   );
 }
 
-function isDocument(value: unknown): value is OrganizationDocument {
-  return (
-    isRecord(value) &&
-    typeof value.id === "string" &&
-    typeof value.originalFilename === "string" &&
-    typeof value.fileSize === "number" &&
-    (typeof value.pageCount === "number" || value.pageCount === null) &&
-    typeof value.mimeType === "string" &&
-    (value.status === "PROCESSING" ||
-      value.status === "READY" ||
-      value.status === "FAILED") &&
-    typeof value.createdAt === "string" &&
-    typeof value.updatedAt === "string"
-  );
-}
-
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) {
-    return `${bytes} B`;
-  }
-  if (bytes < 1024 * 1024) {
-    return `${(bytes / 1024).toFixed(1)} KB`;
-  }
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
 export function DashboardAccount() {
   const router = useRouter();
   const [account, setAccount] = useState<OrganizationAccount | null>(null);
-  const [documents, setDocuments] = useState<OrganizationDocument[] | null>(null);
   const [organizationError, setOrganizationError] = useState<string | null>(
     apiBaseUrl ? null : "Set NEXT_PUBLIC_API_URL to connect to the Knowly API.",
   );
-  const [documentsError, setDocumentsError] = useState<string | null>(
-    apiBaseUrl ? null : "Set NEXT_PUBLIC_API_URL to connect to the Knowly API.",
-  );
+
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
-  const [uploadError, setUploadError] = useState<string | null>(null);
-  const [uploadMessage, setUploadMessage] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [documentsRefresh, setDocumentsRefresh] = useState(0);
   const publicAppUrl =
     process.env.NEXT_PUBLIC_APP_URL?.replace(/\/+$/, "") ||
     (typeof window === "undefined" ? "" : window.location.origin);
@@ -106,80 +57,58 @@ export function DashboardAccount() {
 
     const controller = new AbortController();
     async function loadDashboard() {
-      const responses = await Promise.all([
-        fetch(`${apiBaseUrl}/organization/me`, {
+      try {
+        const response = await fetch(`${apiBaseUrl}/organization/me`, {
           credentials: "include",
           signal: controller.signal,
-        }),
-        fetch(`${apiBaseUrl}/organization/me/documents`, {
-          credentials: "include",
-          signal: controller.signal,
-        }),
-      ]).catch((cause: unknown) => {
+        });
+
+        if (!response) {
+          return;
+        }
+        if (response.status === 401) {
+          router.replace("/login");
+          return;
+        }
+
+        if (!response.ok) {
+          setOrganizationError(
+            await responseErrorMessage(
+              response,
+              "Unable to load your organization.",
+            ),
+          );
+        } else {
+          const result: unknown = await response.json();
+          if (isOrganizationAccount(result)) {
+            setAccount(result);
+          } else {
+            setOrganizationError(
+              "The API returned an unexpected organization response.",
+            );
+          }
+        }
+      } catch (cause: unknown) {
         if (cause instanceof Error && cause.name === "AbortError") {
           return null;
         }
         setOrganizationError("Could not reach the Knowly API.");
-        setDocumentsError("Could not reach the Knowly API.");
         return null;
-      });
-
-      if (!responses) {
-        return;
-      }
-      const [organizationResponse, documentsResponse] = responses;
-      if (
-        organizationResponse.status === 401 ||
-        documentsResponse.status === 401
-      ) {
-        router.replace("/login");
-        return;
-      }
-
-      if (!organizationResponse.ok) {
-        setOrganizationError(
-          await responseErrorMessage(
-            organizationResponse,
-            "Unable to load your organization.",
-          ),
-        );
-      } else {
-        const result: unknown = await organizationResponse.json();
-        if (isOrganizationAccount(result)) {
-          setAccount(result);
-        } else {
-          setOrganizationError("The API returned an unexpected organization response.");
-        }
-      }
-
-      if (!documentsResponse.ok) {
-        setDocumentsError(
-          await responseErrorMessage(
-            documentsResponse,
-            "Unable to load your knowledge base.",
-          ),
-        );
-      } else {
-        const result: unknown = await documentsResponse.json();
-        if (Array.isArray(result) && result.every(isDocument)) {
-          setDocuments(result);
-        } else {
-          setDocumentsError("The API returned an unexpected documents response.");
-        }
       }
     }
 
     void loadDashboard();
     return () => controller.abort();
-  }, [documentsRefresh, router]);
+  }, [router]);
 
   const assistantUrl =
     account?.assistant && publicAppUrl
       ? `${publicAppUrl}/assistant/${account.assistant.token}`
       : null;
-  const embedCode = assistantUrl && account?.assistant && publicAppUrl
-    ? `<iframe src="${publicAppUrl}/embed/assistant/${encodeURIComponent(account.assistant.token)}" width="100%" height="600" style="border:0;" title="Knowly Assistant"></iframe>`
-    : "";
+  const embedCode =
+    assistantUrl && account?.assistant && publicAppUrl
+      ? `<iframe src="${publicAppUrl}/embed/assistant/${encodeURIComponent(account.assistant.token)}" width="100%" height="600" style="border:0;" title="Knowly Assistant"></iframe>`
+      : "";
 
   const copyText = useCallback(async (text: string, label: string) => {
     setActionMessage(null);
@@ -190,74 +119,6 @@ export function DashboardAccount() {
       setActionMessage("Clipboard access is unavailable in this browser.");
     }
   }, []);
-
-  async function handleFileSelected(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.currentTarget.files?.[0];
-    event.currentTarget.value = "";
-    setUploadError(null);
-    setUploadMessage(null);
-    if (!file) {
-      return;
-    }
-    if (file.size === 0) {
-      setUploadError("The selected file is empty.");
-      return;
-    }
-    if (file.size > 10 * 1024 * 1024) {
-      setUploadError("File must be 10 MB or smaller.");
-      return;
-    }
-    if (file.type && file.type !== "application/pdf") {
-      setUploadError("Only PDF files are allowed.");
-      return;
-    }
-    if (!apiBaseUrl) {
-      setUploadError("Set NEXT_PUBLIC_API_URL to connect to the Knowly API.");
-      return;
-    }
-
-    const formData = new FormData();
-    formData.append("file", file);
-    setIsUploading(true);
-    try {
-      const response = await fetch(`${apiBaseUrl}/documents`, {
-        method: "POST",
-        credentials: "include",
-        body: formData,
-      });
-      if (response.status === 401) {
-        router.replace("/login");
-        return;
-      }
-      if (!response.ok) {
-        setUploadError(
-          await responseErrorMessage(response, "Unable to upload this PDF."),
-        );
-        return;
-      }
-      const uploaded: unknown = await response.json();
-      if (
-        isRecord(uploaded) &&
-        uploaded.status === "FAILED"
-      ) {
-        setUploadError(
-          "The PDF was uploaded, but text extraction failed. The original file was retained.",
-        );
-        setDocumentsRefresh((current) => current + 1);
-        return;
-      }
-      setUploadMessage(
-        isRecord(uploaded) && uploaded.status === "READY"
-          ? "Upload successful. PDF text is ready."
-          : "Upload successful",
-      );
-      setDocumentsRefresh((current) => current + 1);
-    } catch {
-      setUploadError("Could not reach the Knowly API. Check that the backend is running.");
-    } finally {
-      setIsUploading(false);
-    }
-  }
 
   async function handleLogout() {
     if (!apiBaseUrl) {
@@ -273,7 +134,10 @@ export function DashboardAccount() {
       });
       if (!response.ok) {
         setActionMessage(
-          await responseErrorMessage(response, "Unable to log out. Please try again."),
+          await responseErrorMessage(
+            response,
+            "Unable to log out. Please try again.",
+          ),
         );
         return;
       }
@@ -312,7 +176,9 @@ export function DashboardAccount() {
 
       <div className="mx-auto max-w-6xl px-5 py-9 sm:px-8 sm:py-12">
         <section className="mb-8">
-          <p className="text-sm font-medium text-[#71856b]">Organization workspace</p>
+          <p className="text-sm font-medium text-[#71856b]">
+            Organization workspace
+          </p>
           {account ? (
             <>
               <h1 className="mt-2 text-3xl font-semibold tracking-tight">
@@ -337,81 +203,7 @@ export function DashboardAccount() {
           </p>
         )}
 
-        <section className="rounded-2xl border border-[#e4e7df] bg-white p-5 sm:p-7">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <h2 className="text-lg font-semibold">Knowledge base</h2>
-              <p className="mt-1 text-sm text-[#858a81]">
-                Your organization&apos;s reference documents
-              </p>
-            </div>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".pdf,application/pdf"
-              className="hidden"
-              onChange={handleFileSelected}
-            />
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={isUploading}
-              className="rounded-lg bg-[#283d32] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#354d3e] disabled:cursor-wait disabled:opacity-60"
-            >
-              {isUploading ? "Uploading..." : "Upload PDF"}
-            </button>
-          </div>
-          {uploadError && (
-            <p role="alert" className="mt-4 text-sm text-[#9d4237]">
-              {uploadError}
-            </p>
-          )}
-          {uploadMessage && (
-            <p role="status" className="mt-4 text-sm text-[#526a54]">
-              {uploadMessage}
-            </p>
-          )}
-
-          {documentsError ? (
-            <p role="alert" className="mt-6 rounded-lg bg-[#fff2ef] p-4 text-sm text-[#9d4237]">
-              {documentsError}
-            </p>
-          ) : documents === null ? (
-            <div className="mt-6 h-24 animate-pulse rounded-xl bg-[#f4f5f1]" />
-          ) : documents.length === 0 ? (
-            <div className="mt-6 rounded-xl border border-dashed border-[#dfe3da] px-5 py-10 text-center">
-              <p className="text-sm font-medium text-[#555c52]">No documents yet</p>
-              <p className="mt-1 text-sm text-[#858a81]">
-                Your uploaded knowledge will appear here.
-              </p>
-            </div>
-          ) : (
-            <ul className="mt-6 divide-y divide-[#eef0eb]">
-              {documents.map((document) => (
-                <li
-                  key={document.id}
-                  className="flex flex-col gap-2 py-4 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between"
-                >
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium">{document.originalFilename}</p>
-                    <p className="mt-1 text-xs text-[#858a81]">
-                      {document.pageCount !== null
-                        ? `${document.pageCount} ${document.pageCount === 1 ? "page" : "pages"} · `
-                        : ""}
-                      {formatFileSize(document.fileSize)} ·{" "}
-                      {new Date(document.createdAt).toLocaleDateString()}
-                    </p>
-                  </div>
-                  <span className="w-fit rounded-full bg-[#f1f3ee] px-2.5 py-1 text-xs text-[#64705f]">
-                    {document.status === "PROCESSING"
-                      ? "Processing..."
-                      : document.status.toLowerCase()}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
+        <Documents />
 
         <section className="mt-6 grid gap-6 lg:grid-cols-2">
           <div className="rounded-2xl border border-[#e4e7df] bg-white p-5 sm:p-7">
