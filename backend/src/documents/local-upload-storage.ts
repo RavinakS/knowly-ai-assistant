@@ -2,11 +2,11 @@ import {
   Injectable,
   InternalServerErrorException,
   Logger,
-} from '@nestjs/common';
-import { randomUUID } from 'node:crypto';
-import { mkdir, unlink, writeFile } from 'node:fs/promises';
-import { isUUID } from 'class-validator';
-import { dirname, isAbsolute, resolve, sep } from 'node:path';
+} from "@nestjs/common";
+import { randomUUID } from "node:crypto";
+import { mkdir, unlink, writeFile } from "node:fs/promises";
+import { isUUID } from "class-validator";
+import { dirname, isAbsolute, resolve, sep } from "node:path";
 
 export interface StoredUpload {
   id: string;
@@ -20,25 +20,25 @@ export class LocalUploadStorage {
 
   async store(organizationId: string, buffer: Buffer): Promise<StoredUpload> {
     if (!isUUID(organizationId)) {
-      throw new InternalServerErrorException('Unable to store uploaded file.');
+      throw new InternalServerErrorException("Unable to store uploaded file.");
     }
 
     const id = randomUUID();
-    const root = resolve(process.env.UPLOAD_DIR || 'uploads');
+    const root = resolve(process.env.UPLOAD_DIR || "uploads");
     const directory = resolve(root, organizationId);
     const path = resolve(directory, `${id}.pdf`);
     const rootPrefix = root.endsWith(sep) ? root : `${root}${sep}`;
 
     if (!directory.startsWith(rootPrefix) || !path.startsWith(rootPrefix)) {
-      throw new InternalServerErrorException('Unable to store uploaded file.');
+      throw new InternalServerErrorException("Unable to store uploaded file.");
     }
 
     try {
       await mkdir(directory, { recursive: true, mode: 0o700 });
-      await writeFile(path, buffer, { flag: 'wx', mode: 0o600 });
+      await writeFile(path, buffer, { flag: "wx", mode: 0o600 });
     } catch {
       await this.removePartialFile(path);
-      throw new InternalServerErrorException('Unable to store uploaded file.');
+      throw new InternalServerErrorException("Unable to store uploaded file.");
     }
 
     const filename = `${organizationId}/${id}.pdf`;
@@ -46,21 +46,21 @@ export class LocalUploadStorage {
   }
 
   async remove(path: string): Promise<void> {
-    const root = resolve(process.env.UPLOAD_DIR || 'uploads');
+    const root = resolve(process.env.UPLOAD_DIR || "uploads");
     const rootPrefix = root.endsWith(sep) ? root : `${root}${sep}`;
     const resolvedPath = resolve(path);
     if (!resolvedPath.startsWith(rootPrefix) || isAbsolute(path) === false) {
-      throw new InternalServerErrorException('Unable to remove stored file.');
+      throw new InternalServerErrorException("Unable to remove stored file.");
     }
 
     try {
       await unlink(resolvedPath);
     } catch (error) {
       if (
-        typeof error === 'object' &&
+        typeof error === "object" &&
         error !== null &&
-        'code' in error &&
-        error.code === 'ENOENT'
+        "code" in error &&
+        error.code === "ENOENT"
       ) {
         return;
       }
@@ -73,10 +73,10 @@ export class LocalUploadStorage {
       await unlink(path);
     } catch (error) {
       if (
-        typeof error === 'object' &&
+        typeof error === "object" &&
         error !== null &&
-        'code' in error &&
-        error.code === 'ENOENT'
+        "code" in error &&
+        error.code === "ENOENT"
       ) {
         return;
       }
@@ -85,5 +85,28 @@ export class LocalUploadStorage {
         error instanceof Error ? error.stack : undefined,
       );
     }
+  }
+
+  async removeDocumentFile(
+    organizationId: string,
+    fileName: string,
+  ): Promise<void> {
+    const match = /^([0-9a-f-]{36})\/([0-9a-f-]{36})\.pdf$/i.exec(fileName);
+
+    if (
+      !isUUID(organizationId) ||
+      !match ||
+      match[1].toLowerCase() !== organizationId.toLowerCase() ||
+      !isUUID(match[2])
+    ) {
+      throw new InternalServerErrorException(
+        "Unable to remove stored document.",
+      );
+    }
+
+    const root = resolve(process.env.UPLOAD_DIR || "uploads");
+    const path = resolve(root, organizationId, `${match[2]}.pdf`);
+
+    await this.remove(path);
   }
 }

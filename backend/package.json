@@ -17,7 +17,7 @@
     "db:deploy": "prisma migrate deploy",
     "seed:pdfs": "tsx scripts/generate_test_pdfs.ts",
     "seed:demo": "tsx scripts/seed_demo.ts",
-    "test:tenant": "tsx --test test/tenant-isolation.test.ts"
+    "test:tenant": "tsx --test test/tenant-isolation.test.ts test/documents.test.ts"
   },
   "dependencies": {
     "@nestjs/common": "^12.0.1",

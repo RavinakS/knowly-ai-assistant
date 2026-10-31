@@ -78,3 +78,7 @@ Content-Type: application/json
 {
   "question": "What is the weather in London?"
 }
+
+### Delete a document owned by the authenticated organization
+# Sign in first, then replace the ID with a document ID from your organization.
+DELETE {{baseUrl}}/documents/{{documentId}}

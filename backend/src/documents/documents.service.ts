@@ -9,11 +9,12 @@ import {
   PayloadTooLargeException,
   UnsupportedMediaTypeException,
   UnauthorizedException,
-} from '@nestjs/common';
-import { DocumentStatus } from '@prisma/client';
-import { PrismaService } from '../prisma/prisma.service.js';
-import { DocumentProcessingService } from './document-processing.service.js';
-import { LocalUploadStorage } from './local-upload-storage.js';
+} from "@nestjs/common";
+import { DocumentStatus } from "@prisma/client";
+import { PrismaService } from "../prisma/prisma.service.js";
+import { DocumentProcessingService } from "./document-processing.service.js";
+import { LocalUploadStorage } from "./local-upload-storage.js";
+import { isUUID } from "class-validator";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
@@ -38,18 +39,18 @@ export class DocumentsService {
 
   async upload(userId: string, file: Express.Multer.File) {
     if (!file || !Buffer.isBuffer(file.buffer) || file.size === 0) {
-      throw new BadRequestException('A non-empty PDF file is required.');
+      throw new BadRequestException("A non-empty PDF file is required.");
     }
     if (file.size > MAX_FILE_SIZE) {
-      throw new PayloadTooLargeException('File must be 10 MB or smaller.');
+      throw new PayloadTooLargeException("File must be 10 MB or smaller.");
     }
     if (
-      file.mimetype !== 'application/pdf' ||
+      file.mimetype !== "application/pdf" ||
       file.buffer.length < 5 ||
-      file.buffer.subarray(0, 5).toString('ascii') !== '%PDF-'
+      file.buffer.subarray(0, 5).toString("ascii") !== "%PDF-"
     ) {
       throw new UnsupportedMediaTypeException(
-        'The uploaded file is not a valid PDF.',
+        "The uploaded file is not a valid PDF.",
       );
     }
 
@@ -64,10 +65,10 @@ export class DocumentsService {
     const originalFilename = file.originalname
       .split(/[\\/]/)
       .at(-1)
-      ?.replace(/[\u0000-\u001f\u007f]/g, '')
+      ?.replace(/[\u0000-\u001f\u007f]/g, "")
       .trim();
     if (!originalFilename || originalFilename.length > 255) {
-      throw new BadRequestException('The uploaded filename is invalid.');
+      throw new BadRequestException("The uploaded filename is invalid.");
     }
 
     const stored = await this.storage.store(user.organizationId, file.buffer);
@@ -85,7 +86,7 @@ export class DocumentsService {
         });
         if (documentCount >= 10) {
           throw new ConflictException(
-            'Your organization has reached the 10-document limit.',
+            "Your organization has reached the 10-document limit.",
           );
         }
 
@@ -97,7 +98,7 @@ export class DocumentsService {
             originalFilename,
             fileSize: file.size,
             pageCount: null,
-            mimeType: 'application/pdf',
+            mimeType: "application/pdf",
             status: DocumentStatus.PROCESSING,
           },
           select: {
@@ -115,12 +116,12 @@ export class DocumentsService {
         await this.storage.remove(stored.path);
       } catch (cleanupError) {
         this.logger.error(
-          'Failed to clean up a stored upload after its database insert failed.',
+          "Failed to clean up a stored upload after its database insert failed.",
           cleanupError instanceof Error ? cleanupError.stack : undefined,
         );
       }
       this.logger.error(
-        'Failed to create the uploaded document record.',
+        "Failed to create the uploaded document record.",
         error instanceof HttpException
           ? undefined
           : error instanceof Error
@@ -131,7 +132,7 @@ export class DocumentsService {
         throw error;
       }
       throw new InternalServerErrorException(
-        'Unable to save the uploaded document.',
+        "Unable to save the uploaded document.",
       );
     }
 
@@ -160,7 +161,7 @@ export class DocumentsService {
             cleanupError instanceof Error ? cleanupError.stack : undefined,
           );
           throw new InternalServerErrorException(
-            'Unable to reject the uploaded document safely.',
+            "Unable to reject the uploaded document safely.",
           );
         }
         throw error;
@@ -171,8 +172,12 @@ export class DocumentsService {
   }
 
   async getPagesForUser(userId: string, documentId: string) {
-    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(documentId)) {
-      throw new BadRequestException('Invalid document ID.');
+    if (
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+        documentId,
+      )
+    ) {
+      throw new BadRequestException("Invalid document ID.");
     }
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
@@ -187,18 +192,18 @@ export class DocumentsService {
       select: { id: true },
     });
     if (!document) {
-      throw new NotFoundException('Document not found.');
+      throw new NotFoundException("Document not found.");
     }
 
     const pages = await this.prisma.documentPage.findMany({
       where: { documentId: document.id, organizationId: user.organizationId },
       select: { pageNumber: true, text: true },
-      orderBy: { pageNumber: 'asc' },
+      orderBy: { pageNumber: "asc" },
     });
     const chunks = await this.prisma.documentChunk.findMany({
       where: { documentId: document.id, organizationId: user.organizationId },
       select: { pageNumber: true, chunkIndex: true, content: true },
-      orderBy: [{ pageNumber: 'asc' }, { chunkIndex: 'asc' }],
+      orderBy: [{ pageNumber: "asc" }, { chunkIndex: "asc" }],
     });
     return {
       documentId: document.id,
@@ -209,5 +214,60 @@ export class DocumentsService {
           .map(({ chunkIndex, content }) => ({ chunkIndex, content })),
       })),
     };
+  }
+
+  async deleteForUser(userId: string, documentId: string): Promise<void> {
+    if (!isUUID(documentId)) {
+      throw new BadRequestException("Invalid Document ID.");
+    }
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { organization: true },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException();
+    }
+
+    const document = await this.prisma.document.findFirst({
+      where: { id: documentId, organizationId: user.organization.id },
+      select: { id: true, filename: true, status: true },
+    });
+
+    if (!document) {
+      throw new NotFoundException("Document not found.");
+    }
+
+    if (document.status === DocumentStatus.PROCESSING) {
+      throw new ConflictException(
+        "This document cannot be deleted while it is processing.",
+      );
+    }
+
+    try {
+      await this.storage.removeDocumentFile(
+        user.organization.id,
+        document.filename,
+      );
+
+      await this.prisma.document.delete({
+        where: {
+          id_organizationId: {
+            id: document.id,
+            organizationId: user.organization.id,
+          },
+        },
+      });
+    } catch (error) {
+      this.logger.error(
+        `Failed to delete document ${document.id}`,
+        error instanceof Error ? error.stack : undefined,
+      );
+
+      throw new InternalServerErrorException(
+        "Unable to delete the document. Please try again.",
+      );
+    }
   }
 }
