@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, ChangeEvent } from "react";
 import { apiBaseUrl, responseErrorMessage } from "@/lib/auth-api";
 import { useRouter } from "next/navigation";
+import { ConfirmationModal } from "./confirmation-modal";
 
 interface OrganizationDocument {
   id: string;
@@ -64,6 +65,13 @@ export function Documents() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [documentsRefresh, setDocumentsRefresh] = useState(0);
 
+  const [documentToDelete, setDocumentToDelete] =
+    useState<OrganizationDocument | null>(null);
+  const [deletingDocumentId, setDeletingDocumentId] = useState<string | null>(
+    null,
+  );
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
   useEffect(() => {
     if (!apiBaseUrl) {
       return;
@@ -101,8 +109,6 @@ export function Documents() {
         const result: unknown = await response.json();
 
         if (Array.isArray(result) && result.every(isDocument)) {
-          console.log("documents: ", result);
-
           if (!controller.signal.aborted) {
             setDocuments(result);
             setDocumentsError("");
@@ -196,6 +202,51 @@ export function Documents() {
     }
   }
 
+  async function handleDeleteDocument() {
+    if (!documentToDelete || !apiBaseUrl) {
+      setDeleteError("The delete service is unavailable. Please try again.");
+      return;
+    }
+
+    const documentId = documentToDelete.id;
+    setDeleteError(null);
+    setDeletingDocumentId(documentId);
+
+    try {
+      const response = await fetch(
+        `${apiBaseUrl}/documents/${encodeURIComponent(documentId)}`,
+        { method: "DELETE", credentials: "include" },
+      );
+
+      if (response.status === 401) {
+        router.replace("/login");
+        return;
+      }
+
+      if (!response.ok) {
+        setDeleteError(
+          await responseErrorMessage(
+            response,
+            "Unable to delete this document. Please try again.",
+          ),
+        );
+        return;
+      }
+
+      setDocuments(
+        (current) =>
+          current?.filter((document) => document.id !== documentId) ?? current,
+      );
+      setDocumentToDelete(null);
+    } catch {
+      setDeleteError(
+        "Could not reach the knowly API. Check your connection and try again.",
+      );
+    } finally {
+      setDeletingDocumentId(null);
+    }
+  }
+
   return (
     <>
       <section className="rounded-2xl border border-[#e4e7df] bg-white p-5 sm:p-7">
@@ -271,6 +322,9 @@ export function Documents() {
                   <th scope="col" className="px-0.5 py-3 font-medium">
                     File Size
                   </th>
+                  <th scope="col" className="px-3 py-3 text-right font-medium">
+                    Actions
+                  </th>
                 </tr>
               </thead>
 
@@ -306,6 +360,42 @@ export function Documents() {
                     <td className="whitespace-nowrap px-0.5 py-4 text-[#64705f]">
                       {formatFileSize(document.fileSize) ?? "—"}
                     </td>
+
+                    <td className="whitespace-nowrap px-3 py-4 text-right">
+                      <button
+                        type="button"
+                        aria-label={`Delete ${document.originalFilename}`}
+                        title={
+                          document.status === "PROCESSING"
+                            ? "Wait until processing finishes before deleting"
+                            : "Delete document"
+                        }
+                        disabled={
+                          document.status === "PROCESSING" ||
+                          deletingDocumentId !== null
+                        }
+                        onClick={() => {
+                          setDeleteError(null);
+                          setDocumentToDelete(document);
+                        }}
+                        className="rounded-lg p-2 text-[#9d4237] transition hover:bg-[#fff2ef] disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        <svg
+                          aria-hidden="true"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.8"
+                          className="h-5 w-5"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="M3 6h18M8 6V4h8v2m3 0-.8 14H5.8L5 6m4 4v6m6-6v6"
+                          />
+                        </svg>
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -313,6 +403,30 @@ export function Documents() {
           </div>
         )}
       </section>
+
+      <ConfirmationModal
+        open={documentToDelete !== null}
+        title="Delete document?"
+        description={
+          <>
+            Are you sure you want to delete{" "}
+            <strong className="text-[#20231f]">
+              {documentToDelete?.originalFilename}
+            </strong>
+            ? Its stored PDF and extracted knowledge will be permanently
+            removed.
+          </>
+        }
+        confirmLabel="Delete"
+        isConfirming={deletingDocumentId !== null}
+        onConfirm={handleDeleteDocument}
+        onCancel={() => {
+          if (deletingDocumentId === null) {
+            setDocumentToDelete(null);
+            setDeleteError(null);
+          }
+        }}
+      />
     </>
   );
 }
