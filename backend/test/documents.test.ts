@@ -50,7 +50,7 @@ before(async () => {
 
   const address = app.getHttpServer().address();
   assert.ok(address && typeof address !== "string");
-  baseUrl = `http:/127.0.01:${address.port}`;
+  baseUrl = `http://127.0.0.1:${address.port}`;
 
   prisma = app.get(PrismaService);
 
@@ -271,15 +271,15 @@ test("DELETE /documents/:id is authenticated and organization-scoped", async (t)
   );
 
   await t.test(
-    "returns a safe error if stored-file deletion fails",
+    "returns a safe error if staging the stored file fails",
     async () => {
       const document = await createDocument(organizationAId);
       const { LocalUploadStorage } =
         await import("../dist/documents/local-upload-storage.js");
       const storage = app.get(LocalUploadStorage);
-      const originalRemove = storage.removeDocumentFile.bind(storage);
+      const originalStage = storage.stageDocumentFile.bind(storage);
 
-      storage.removeDocumentFile = async () => {
+      storage.stageDocumentFile = async () => {
         throw new Error(`Test failure at ${document.filePath}`);
       };
 
@@ -295,7 +295,7 @@ test("DELETE /documents/:id is authenticated and organization-scoped", async (t)
         );
         assert.equal(await fileExists(document.filePath), true);
       } finally {
-        storage.removeDocumentFile = originalRemove;
+        storage.stageDocumentFile = originalStage;
       }
     },
   );

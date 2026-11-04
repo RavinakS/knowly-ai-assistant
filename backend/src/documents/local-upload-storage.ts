@@ -4,7 +4,7 @@ import {
   Logger,
 } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
-import { mkdir, unlink, writeFile } from "node:fs/promises";
+import { mkdir, rename, unlink, writeFile } from "node:fs/promises";
 import { isUUID } from "class-validator";
 import { dirname, isAbsolute, resolve, sep } from "node:path";
 
@@ -12,6 +12,11 @@ export interface StoredUpload {
   id: string;
   filename: string;
   path: string;
+}
+
+export interface StagedDocumentFile {
+  originalPath: string;
+  stagedPath: string;
 }
 
 @Injectable()
@@ -108,5 +113,82 @@ export class LocalUploadStorage {
     const path = resolve(root, organizationId, `${match[2]}.pdf`);
 
     await this.remove(path);
+  }
+
+  async stageDocumentFile(
+    organizationId: string,
+    fileName: string,
+  ): Promise<StagedDocumentFile | null> {
+    const match = /^([0-9a-f-]{36})\/([0-9a-f-]{36})\.pdf$/i.exec(fileName);
+
+    if (
+      !isUUID(organizationId) ||
+      !match ||
+      match[1].toLowerCase() !== organizationId.toLowerCase() ||
+      !isUUID(match[2])
+    ) {
+      throw new InternalServerErrorException(
+        "Unable to stage stored document.",
+      );
+    }
+
+    const root = resolve(process.env.UPLOAD_DIR || "uploads");
+    const originalPath = resolve(root, organizationId, `${match[2]}.pdf`);
+    const rootPrefix = root.endsWith(sep) ? root : `${root}${sep}`;
+
+    if (!originalPath.startsWith(rootPrefix)) {
+      throw new InternalServerErrorException(
+        "Unable to stage stored document.",
+      );
+    }
+
+    const stagedPath = `${originalPath}.deleting-${randomUUID()}`;
+
+    try {
+      await rename(originalPath, stagedPath);
+      return { originalPath, stagedPath };
+    } catch (error) {
+      if (
+        typeof error === "object" &&
+        error !== null &&
+        "code" in error &&
+        error.code === "ENOENT"
+      ) {
+        return null;
+      }
+      throw error;
+    }
+  }
+
+  async restoreStagedDocumentFile(
+    stagedFile: StagedDocumentFile,
+  ): Promise<void> {
+    this.validateStagedDocumentFile(stagedFile);
+    await rename(stagedFile.stagedPath, stagedFile.originalPath);
+  }
+
+  async removeStagedDocumentFile(
+    stagedFile: StagedDocumentFile,
+  ): Promise<void> {
+    this.validateStagedDocumentFile(stagedFile);
+    await this.remove(stagedFile.stagedPath);
+  }
+
+  private validateStagedDocumentFile(stagedFile: StagedDocumentFile): void {
+    const root = resolve(process.env.UPLOAD_DIR || "uploads");
+    const rootPrefix = root.endsWith(sep) ? root : `${root}${sep}`;
+    const originalPath = resolve(stagedFile.originalPath);
+    const stagedPath = resolve(stagedFile.stagedPath);
+
+    if (
+      !originalPath.startsWith(rootPrefix) ||
+      !stagedPath.startsWith(rootPrefix) ||
+      dirname(originalPath) !== dirname(stagedPath) ||
+      !stagedPath.startsWith(`${originalPath}.deleting-`)
+    ) {
+      throw new InternalServerErrorException(
+        "Unable to update stored document.",
+      );
+    }
   }
 }

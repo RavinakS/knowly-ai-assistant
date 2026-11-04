@@ -44,13 +44,6 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-const DOCUMENT_HEADER = [
-  "File Name",
-  "Upload Date",
-  "Processing Status",
-  "Page Count",
-];
-
 export function Documents() {
   const router = useRouter();
   const [documents, setDocuments] = useState<OrganizationDocument[] | null>(

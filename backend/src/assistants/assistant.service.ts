@@ -65,8 +65,6 @@ export class AssistantService {
       select: { isActive: true, organization: { select: { name: true } } },
     });
 
-    console.log("assistant:", assistant);
-
     if (!assistant || !assistant.isActive) {
       throw new NotFoundException("Assistant not found.");
     }

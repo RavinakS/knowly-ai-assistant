@@ -15,6 +15,7 @@ import { PrismaService } from "../prisma/prisma.service.js";
 import { DocumentProcessingService } from "./document-processing.service.js";
 import { LocalUploadStorage } from "./local-upload-storage.js";
 import { isUUID } from "class-validator";
+import { error } from "console";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
@@ -245,12 +246,25 @@ export class DocumentsService {
       );
     }
 
+    let stagedFile;
+
     try {
-      await this.storage.removeDocumentFile(
+      stagedFile = await this.storage.stageDocumentFile(
         user.organization.id,
         document.filename,
       );
+    } catch (error) {
+      this.logger.error(
+        `Failed to stage document ${document.id} for deletion`,
+        error instanceof Error ? error.stack : undefined,
+      );
 
+      throw new InternalServerErrorException(
+        "Unable to delete the document. Please try again.",
+      );
+    }
+
+    try {
       await this.prisma.document.delete({
         where: {
           id_organizationId: {
@@ -260,14 +274,36 @@ export class DocumentsService {
         },
       });
     } catch (error) {
+      if (stagedFile) {
+        try {
+          await this.storage.restoreStagedDocumentFile(stagedFile);
+        } catch (restoreError) {
+          this.logger.error(
+            `Failed to restore the PDF for document ${document.id} after database deletion failed.`,
+            restoreError instanceof Error ? restoreError.stack : undefined,
+          );
+        }
+      }
+
       this.logger.error(
-        `Failed to delete document ${document.id}`,
+        `Failed to delete document ${document.id} from the database.`,
         error instanceof Error ? error.stack : undefined,
       );
 
       throw new InternalServerErrorException(
         "Unable to delete the document. Please try again.",
       );
+    }
+
+    if (stagedFile) {
+      try {
+        await this.storage.removeStagedDocumentFile(stagedFile);
+      } catch (error) {
+        this.logger.error(
+          `Document ${document.id} was deleted, but its staged PDF could not be removed.`,
+          error instanceof Error ? error.stack : undefined,
+        );
+      }
     }
   }
 }
