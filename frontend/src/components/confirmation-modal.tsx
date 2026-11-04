@@ -11,6 +11,7 @@ interface ConfirmationModalProps {
   isConfirming?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
+  error?: string | null;
 }
 
 export function ConfirmationModal({
@@ -22,6 +23,7 @@ export function ConfirmationModal({
   isConfirming,
   onConfirm,
   onCancel,
+  error,
 }: ConfirmationModalProps) {
   useEffect(() => {
     if (!open || isConfirming) {
@@ -61,14 +63,17 @@ export function ConfirmationModal({
         <h2 id="confirmation-model-title" className="text-lg font-semibold">
           {title}
         </h2>
-
         <div
           id="confirmation-modal-description"
           className="mt-3 text-sm leading-6 text-[#64705f]"
         >
           {description}
         </div>
-
+        {error && (
+          <p role="alert" className="mt-4 text-sm text-[#9d4237]">
+            {error}
+          </p>
+        )}
         <div className="mt-6 flex justify-end gap-3">
           <button
             type="button"

@@ -426,6 +426,7 @@ export function Documents() {
             setDeleteError(null);
           }
         }}
+        error={deleteError}
       />
     </>
   );
