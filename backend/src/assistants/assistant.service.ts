@@ -73,4 +73,26 @@ export class AssistantService {
       isActive: assistant.isActive,
     };
   }
+
+  async setActiveForUser(userId: string, isActive: boolean) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { organizationId: true },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException();
+    }
+
+    const result = await this.prisma.assistant.updateMany({
+      where: { organizationId: user.organizationId },
+      data: { isActive },
+    });
+
+    if (result.count === 0) {
+      throw new NotFoundException("Assistant not found.");
+    }
+
+    return { isActive };
+  }
 }

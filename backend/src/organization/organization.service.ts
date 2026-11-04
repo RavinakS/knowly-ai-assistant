@@ -1,5 +1,5 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service.js';
+import { Injectable, UnauthorizedException } from "@nestjs/common";
+import { PrismaService } from "../prisma/prisma.service.js";
 
 @Injectable()
 export class OrganizationService {
@@ -24,7 +24,7 @@ export class OrganizationService {
       select: {
         id: true,
         name: true,
-        assistant: { select: { id: true, token: true } },
+        assistant: { select: { id: true, token: true, isActive: true } },
       },
     });
     if (!organization) {
@@ -59,7 +59,7 @@ export class OrganizationService {
         createdAt: true,
         updatedAt: true,
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: "desc" },
     });
   }
 }

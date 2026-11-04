@@ -58,15 +58,14 @@ before(async () => {
       const irrelevant = userMessage === "weather in London";
       const deletedKnowledge = userMessage === "quartz cobalt rules";
       const understood = {
-        intent:
-          clarification || irrelevant ? "unknown" : "knowledge_question",
+        intent: clarification || irrelevant ? "unknown" : "knowledge_question",
         normalizedQuestion: clarification
           ? "Please clarify this question"
           : irrelevant
             ? "What is the weather in London?"
             : deletedKnowledge
               ? "What are the quartz cobalt rules?"
-            : userMessage,
+              : userMessage,
         requiresKnowledgeBase: true,
         keywords: clarification
           ? []
@@ -430,13 +429,10 @@ test("authenticated and public APIs remain tenant-isolated", async (t) => {
         },
       });
 
-      const deleted = await fetch(
-        `${baseUrl}/documents/${deletedDocumentId}`,
-        {
-          method: "DELETE",
-          headers: { cookie: userACookie },
-        },
-      );
+      const deleted = await fetch(`${baseUrl}/documents/${deletedDocumentId}`, {
+        method: "DELETE",
+        headers: { cookie: userACookie },
+      });
       assert.equal(deleted.status, 204);
 
       const search = await fetch(`${baseUrl}/documents/search`, {
@@ -474,7 +470,9 @@ test("authenticated and public APIs remain tenant-isolated", async (t) => {
       assert.deepEqual(answerBody.sources, []);
       assert.equal(answerBody.answer.includes(deletedContent), false);
       assert.equal(answerCalls, previousAnswerCalls);
-      assert.ok(llmContexts.every((context) => !context.includes(deletedContent)));
+      assert.ok(
+        llmContexts.every((context) => !context.includes(deletedContent)),
+      );
     },
   );
 
@@ -598,6 +596,156 @@ test("authenticated and public APIs remain tenant-isolated", async (t) => {
       );
       assert.equal(missingKey.status, 503);
       process.env.LLM_API_KEY = "test-key-not-a-real-secret";
+    },
+  );
+
+  await t.test(
+    "assistant activation is authenticated and tenant-isolated",
+    async () => {
+      const assistantA = await prisma.assistant.findUniqueOrThrow({
+        where: { token: assistantAToken },
+        select: { isActive: true },
+      });
+
+      const assistantB = await prisma.assistant.findUniqueOrThrow({
+        where: { token: assistantBToken },
+        select: { isActive: true },
+      });
+
+      // Start from a known active state.
+      await prisma.assistant.updateMany({
+        where: { organizationId: { in: [organizationAId, organizationBId] } },
+        data: { isActive: true },
+      });
+
+      // No user JWT: changing status must be rejected.
+      const unauthenticated = await fetch(`${baseUrl}/assistants`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ isActive: false }),
+      });
+      assert.equal(unauthenticated.status, 401);
+
+      // A public assistant token is not admin authentication.
+      const publicTokenOnly = await fetch(`${baseUrl}/assistants`, {
+        method: "PATCH",
+        headers: {
+          authorization: `Bearer ${assistantAToken}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ isActive: false }),
+      });
+      assert.equal(publicTokenOnly.status, 401);
+
+      // Reject invalid values and client-supplied tenant identifiers.
+      for (const body of [
+        { isActive: "false" },
+        {},
+        { isActive: false, organizationId: organizationBId },
+        { isActive: false, assistantId: assistantBToken },
+      ]) {
+        const invalid = await fetch(`${baseUrl}/assistants`, {
+          method: "PATCH",
+          headers: {
+            cookie: userACookie,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify(body),
+        });
+        assert.equal(invalid.status, 400);
+      }
+
+      // Org A can deactivate its assistant.
+      const deactivateA = await fetch(`${baseUrl}/assistants`, {
+        method: "PATCH",
+        headers: {
+          cookie: userACookie,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ isActive: false }),
+      });
+      assert.equal(deactivateA.status, 200);
+      assert.deepEqual(await deactivateA.json(), { isActive: false });
+
+      const assistantAAfterDeactivate =
+        await prisma.assistant.findUniqueOrThrow({
+          where: { token: assistantAToken },
+          select: { isActive: true },
+        });
+      const assistantBAfterAChange = await prisma.assistant.findUniqueOrThrow({
+        where: { token: assistantBToken },
+        select: { isActive: true },
+      });
+      assert.equal(assistantAAfterDeactivate.isActive, false);
+      assert.equal(assistantBAfterAChange.isActive, true);
+
+      // Inactive public assistants cannot show info or answer questions.
+      const publicInfo = await fetch(
+        `${baseUrl}/public/assistants/${assistantAToken}`,
+      );
+      assert.equal(publicInfo.status, 404);
+
+      const answerCallsBeforeInactiveRequest = answerCalls;
+      const publicAnswer = await fetch(
+        `${baseUrl}/public/assistants/${assistantAToken}/answer`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ question: "scholarship GPA" }),
+        },
+      );
+      assert.equal(publicAnswer.status, 404);
+      assert.equal(answerCalls, answerCallsBeforeInactiveRequest);
+
+      // Org A can reactivate its assistant.
+      const activateA = await fetch(`${baseUrl}/assistants`, {
+        method: "PATCH",
+        headers: {
+          cookie: userACookie,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ isActive: true }),
+      });
+      assert.equal(activateA.status, 200);
+      assert.deepEqual(await activateA.json(), { isActive: true });
+
+      const activePublicInfo = await fetch(
+        `${baseUrl}/public/assistants/${assistantAToken}`,
+      );
+      assert.equal(activePublicInfo.status, 200);
+      assert.equal((await activePublicInfo.json()).isActive, true);
+
+      // Org B can change only its own assistant.
+      const deactivateB = await fetch(`${baseUrl}/assistants`, {
+        method: "PATCH",
+        headers: {
+          cookie: userBCookie,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ isActive: false }),
+      });
+      assert.equal(deactivateB.status, 200);
+
+      const finalAssistantA = await prisma.assistant.findUniqueOrThrow({
+        where: { token: assistantAToken },
+        select: { isActive: true },
+      });
+      const finalAssistantB = await prisma.assistant.findUniqueOrThrow({
+        where: { token: assistantBToken },
+        select: { isActive: true },
+      });
+      assert.equal(finalAssistantA.isActive, true);
+      assert.equal(finalAssistantB.isActive, false);
+
+      // Restore the original states for any later tests.
+      await prisma.assistant.updateMany({
+        where: { organizationId: organizationAId },
+        data: { isActive: assistantA.isActive },
+      });
+      await prisma.assistant.updateMany({
+        where: { organizationId: organizationBId },
+        data: { isActive: assistantB.isActive },
+      });
     },
   );
 });
