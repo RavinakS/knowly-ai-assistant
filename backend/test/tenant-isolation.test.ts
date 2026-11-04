@@ -3,6 +3,7 @@ import { after, before, test } from "node:test";
 import cookieParser from "cookie-parser";
 import dotenv from "dotenv";
 import { ValidationPipe, type INestApplication } from "@nestjs/common";
+import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 
 dotenv.config({ path: resolve(process.cwd(), ".env") });
@@ -55,20 +56,25 @@ before(async () => {
       }
       const clarification = userMessage === "please clarify";
       const irrelevant = userMessage === "weather in London";
+      const deletedKnowledge = userMessage === "quartz cobalt rules";
       const understood = {
         intent:
-          clarification || irrelevant ? "unknown" : "eligibility_question",
+          clarification || irrelevant ? "unknown" : "knowledge_question",
         normalizedQuestion: clarification
           ? "Please clarify this question"
           : irrelevant
             ? "What is the weather in London?"
+            : deletedKnowledge
+              ? "What are the quartz cobalt rules?"
             : userMessage,
         requiresKnowledgeBase: true,
         keywords: clarification
           ? []
           : irrelevant
             ? ["weather", "London"]
-            : ["scholarship", "GPA"],
+            : deletedKnowledge
+              ? ["quartz", "cobalt"]
+              : ["scholarship", "GPA"],
       };
       return new Response(
         JSON.stringify({
@@ -384,6 +390,91 @@ test("authenticated and public APIs remain tenant-isolated", async (t) => {
       assert.deepEqual(publicBBody.sources, [
         { documentName: "Organization_B_Scholarship.pdf", pageNumber: 1 },
       ]);
+    },
+  );
+
+  await t.test(
+    "deleted document content is no longer searchable or used in answers",
+    async () => {
+      const deletedDocumentId = randomUUID();
+      const storedFileId = randomUUID();
+      const deletedContent =
+        "The quartz cobalt rules require a blue badge for after-hours entry.";
+      await prisma.document.create({
+        data: {
+          id: deletedDocumentId,
+          organizationId: organizationAId,
+          filename: `${organizationAId}/${storedFileId}.pdf`,
+          originalFilename: "Organization_A_Quartz_Rules.pdf",
+          fileSize: 100,
+          pageCount: 1,
+          mimeType: "application/pdf",
+          status: "READY",
+        },
+      });
+      await prisma.documentPage.create({
+        data: {
+          documentId: deletedDocumentId,
+          organizationId: organizationAId,
+          pageNumber: 1,
+          text: deletedContent,
+        },
+      });
+      await prisma.documentChunk.create({
+        data: {
+          documentId: deletedDocumentId,
+          organizationId: organizationAId,
+          pageNumber: 1,
+          chunkIndex: 0,
+          content: deletedContent,
+        },
+      });
+
+      const deleted = await fetch(
+        `${baseUrl}/documents/${deletedDocumentId}`,
+        {
+          method: "DELETE",
+          headers: { cookie: userACookie },
+        },
+      );
+      assert.equal(deleted.status, 204);
+
+      const search = await fetch(`${baseUrl}/documents/search`, {
+        method: "POST",
+        headers: {
+          cookie: userACookie,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ question: "quartz cobalt rules" }),
+      });
+      assert.equal(search.status, 201);
+      const searchBody = (await search.json()) as {
+        results: { content: string; documentName: string }[];
+        hasRelevantKnowledge: boolean;
+      };
+      assert.deepEqual(searchBody.results, []);
+      assert.equal(searchBody.hasRelevantKnowledge, false);
+
+      const previousAnswerCalls = answerCalls;
+      const answer = await fetch(`${baseUrl}/documents/answer`, {
+        method: "POST",
+        headers: {
+          cookie: userACookie,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ question: "quartz cobalt rules" }),
+      });
+      assert.equal(answer.status, 201);
+      const answerBody = (await answer.json()) as {
+        decision: string;
+        sources: { documentName: string; pageNumber: number }[];
+        answer: string;
+      };
+      assert.equal(answerBody.decision, "NO_RELEVANT_KNOWLEDGE");
+      assert.deepEqual(answerBody.sources, []);
+      assert.equal(answerBody.answer.includes(deletedContent), false);
+      assert.equal(answerCalls, previousAnswerCalls);
+      assert.ok(llmContexts.every((context) => !context.includes(deletedContent)));
     },
   );
 

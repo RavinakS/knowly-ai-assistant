@@ -165,6 +165,21 @@ async function deleteDocument(id: string, cookie?: string): Promise<Response> {
   return fetch(`${baseUrl}/documents/${id}`, { method: "DELETE", headers });
 }
 
+async function uploadDocument(
+  buffer: Buffer,
+  filename: string,
+  contentType: string,
+): Promise<Response> {
+  const form = new FormData();
+  form.append("file", new Blob([buffer], { type: contentType }), filename);
+
+  return fetch(`${baseUrl}/documents`, {
+    method: "POST",
+    headers: { cookie: userACookie },
+    body: form,
+  });
+}
+
 async function fileExists(filePath: string): Promise<boolean> {
   try {
     await access(filePath);
@@ -301,6 +316,44 @@ test("DELETE /documents/:id is authenticated and organization-scoped", async (t)
   );
 
   await t.test(
+    "restores the original PDF when the database deletion fails",
+    async () => {
+      const document = await createDocument(organizationAId);
+      const originalDelete = prisma.document.delete.bind(prisma.document);
+      prisma.document.delete = (async () => {
+        throw new Error("Simulated database delete failure");
+      }) as typeof prisma.document.delete;
+
+      try {
+        const response = await deleteDocument(document.id, userACookie);
+        const responseText = await response.text();
+
+        assert.equal(response.status, 500);
+        assert.equal(responseText.includes("Simulated database"), false);
+        assert.equal(
+          await prisma.document.count({ where: { id: document.id } }),
+          1,
+        );
+        assert.equal(
+          await prisma.documentPage.count({
+            where: { documentId: document.id },
+          }),
+          1,
+        );
+        assert.equal(
+          await prisma.documentChunk.count({
+            where: { documentId: document.id },
+          }),
+          1,
+        );
+        assert.equal(await fileExists(document.filePath), true);
+      } finally {
+        prisma.document.delete = originalDelete;
+      }
+    },
+  );
+
+  await t.test(
     "does not let a client-supplied organization ID switch tenants",
     async () => {
       const document = await createDocument(organizationBId);
@@ -322,4 +375,132 @@ test("DELETE /documents/:id is authenticated and organization-scoped", async (t)
       assert.equal(await fileExists(document.filePath), true);
     },
   );
+});
+
+test("POST /documents validates uploads and reports processing failures", async (t) => {
+  await t.test("rejects an empty upload without creating a document", async () => {
+    const before = await prisma.document.count({
+      where: { organizationId: organizationAId },
+    });
+    const response = await uploadDocument(Buffer.alloc(0), "empty.pdf", "application/pdf");
+
+    assert.equal(response.status, 400);
+    assert.equal(
+      await prisma.document.count({
+        where: { organizationId: organizationAId },
+      }),
+      before,
+    );
+  });
+
+  await t.test("rejects unsupported file types", async () => {
+    const before = await prisma.document.count({
+      where: { organizationId: organizationAId },
+    });
+    const response = await uploadDocument(
+      Buffer.from("not a PDF"),
+      "notes.txt",
+      "text/plain",
+    );
+
+    assert.equal(response.status, 415);
+    assert.equal(
+      await prisma.document.count({
+        where: { organizationId: organizationAId },
+      }),
+      before,
+    );
+  });
+
+  await t.test("rejects a PDF MIME type with an invalid PDF signature", async () => {
+    const before = await prisma.document.count({
+      where: { organizationId: organizationAId },
+    });
+    const response = await uploadDocument(
+      Buffer.from("not actually a PDF"),
+      "spoofed.pdf",
+      "application/pdf",
+    );
+
+    assert.equal(response.status, 415);
+    assert.equal(
+      await prisma.document.count({
+        where: { organizationId: organizationAId },
+      }),
+      before,
+    );
+  });
+
+  await t.test("rejects files larger than 10 MB", async () => {
+    const before = await prisma.document.count({
+      where: { organizationId: organizationAId },
+    });
+    const response = await uploadDocument(
+      Buffer.alloc(10 * 1024 * 1024 + 1, 0x41),
+      "oversized.pdf",
+      "application/pdf",
+    );
+
+    assert.equal(response.status, 413);
+    assert.equal(
+      await prisma.document.count({
+        where: { organizationId: organizationAId },
+      }),
+      before,
+    );
+  });
+
+  await t.test("marks extraction failures as FAILED without partial knowledge", async () => {
+    const { PdfTextExtractorService } = await import(
+      "../dist/documents/pdf-text-extractor.service.js"
+    );
+    const extractor = app.get(PdfTextExtractorService);
+    const originalExtract = extractor.extract.bind(extractor);
+    extractor.extract = async () => {
+      throw new Error("Simulated PDF extraction failure");
+    };
+
+    try {
+      const response = await uploadDocument(
+        Buffer.from("%PDF-1.4\nminimal test fixture"),
+        "extraction-fails.pdf",
+        "application/pdf",
+      );
+      assert.equal(response.status, 201);
+      const uploaded = (await response.json()) as {
+        id: string;
+        status: string;
+      };
+      assert.equal(uploaded.status, "FAILED");
+
+      const record = await prisma.document.findUnique({
+        where: { id: uploaded.id },
+        select: { organizationId: true, filename: true, status: true },
+      });
+      assert.ok(record);
+      assert.equal(record.status, "FAILED");
+      assert.equal(record.organizationId, organizationAId);
+      assert.equal(
+        await prisma.documentPage.count({
+          where: { documentId: uploaded.id },
+        }),
+        0,
+      );
+      assert.equal(
+        await prisma.documentChunk.count({
+          where: { documentId: uploaded.id },
+        }),
+        0,
+      );
+
+      const [storedOrganizationId, storedFilename] = record.filename.split("/");
+      assert.equal(storedOrganizationId, organizationAId);
+      assert.equal(
+        await fileExists(join(uploadDir, storedOrganizationId, storedFilename)),
+        true,
+      );
+    } finally {
+      extractor.extract = originalExtract;
+    }
+  });
 });
