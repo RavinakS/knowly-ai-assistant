@@ -2,14 +2,15 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { apiBaseUrl, responseErrorMessage } from "@/lib/auth-api";
+import { AssistantSection } from "./assistant-section";
 import { Documents } from "./documents";
 
 interface OrganizationAccount {
   user: { id: string; email: string; name: string };
   organization: { id: string; name: string };
-  assistant: { id: string; token: string } | null;
+  assistant: { id: string; token: string; isActive: boolean } | null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -33,7 +34,8 @@ function isOrganizationAccount(value: unknown): value is OrganizationAccount {
     (value.assistant === null ||
       (isRecord(value.assistant) &&
         typeof value.assistant.id === "string" &&
-        typeof value.assistant.token === "string"))
+        typeof value.assistant.token === "string" &&
+        typeof value.assistant.isActive === "boolean"))
   );
 }
 
@@ -46,9 +48,6 @@ export function DashboardAccount() {
 
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
-  const publicAppUrl =
-    process.env.NEXT_PUBLIC_APP_URL?.replace(/\/+$/, "") ||
-    (typeof window === "undefined" ? "" : window.location.origin);
 
   useEffect(() => {
     if (!apiBaseUrl) {
@@ -100,25 +99,6 @@ export function DashboardAccount() {
     void loadDashboard();
     return () => controller.abort();
   }, [router]);
-
-  const assistantUrl =
-    account?.assistant && publicAppUrl
-      ? `${publicAppUrl}/assistant/${account.assistant.token}`
-      : null;
-  const embedCode =
-    assistantUrl && account?.assistant && publicAppUrl
-      ? `<iframe src="${publicAppUrl}/embed/assistant/${encodeURIComponent(account.assistant.token)}" width="100%" height="600" style="border:0;" title="Knowly Assistant"></iframe>`
-      : "";
-
-  const copyText = useCallback(async (text: string, label: string) => {
-    setActionMessage(null);
-    try {
-      await navigator.clipboard.writeText(text);
-      setActionMessage(`${label} copied`);
-    } catch {
-      setActionMessage("Clipboard access is unavailable in this browser.");
-    }
-  }, []);
 
   async function handleLogout() {
     if (!apiBaseUrl) {
@@ -205,78 +185,21 @@ export function DashboardAccount() {
 
         <Documents />
 
-        <section className="mt-6 grid gap-6 lg:grid-cols-2">
-          <div className="rounded-2xl border border-[#e4e7df] bg-white p-5 sm:p-7">
-            <div>
-              <h2 className="text-lg font-semibold">Assistant</h2>
-              <p className="mt-1 text-sm text-[#858a81]">
-                Share a public link to your organization&apos;s assistant.
-              </p>
-            </div>
-            {assistantUrl ? (
-              <>
-                <div className="mt-5 break-all rounded-lg bg-[#f5f6f2] px-3.5 py-3 text-sm text-[#4d594b]">
-                  {assistantUrl}
-                </div>
-                <div className="mt-4 flex flex-wrap gap-3">
-                  <button
-                    type="button"
-                    onClick={() => void copyText(assistantUrl, "Assistant URL")}
-                    className="rounded-lg bg-[#283d32] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#354d3e]"
-                  >
-                    Copy URL
-                  </button>
-                  <button
-                    type="button"
-                    disabled
-                    title="Assistant token management will be available later."
-                    className="cursor-not-allowed rounded-lg border border-[#dedfd6] px-4 py-2.5 text-sm font-medium text-[#596154] opacity-55"
-                  >
-                    Regenerate
-                  </button>
-                </div>
-              </>
-            ) : organizationError ? (
-              <p role="alert" className="mt-5 text-sm text-[#9d4237]">
-                Unable to load assistant information.
-              </p>
-            ) : (
-              <div className="mt-5 h-11 animate-pulse rounded-lg bg-[#f4f5f1]" />
-            )}
-          </div>
-
-          <div className="rounded-2xl border border-[#e4e7df] bg-white p-5 sm:p-7">
-            <div>
-              <h2 className="text-lg font-semibold">Embed</h2>
-              <p className="mt-1 text-sm text-[#858a81]">
-                Add the assistant to your organization&apos;s website.
-              </p>
-            </div>
-            {assistantUrl ? (
-              <>
-                <textarea
-                  aria-label="Assistant iframe embed code"
-                  readOnly
-                  value={embedCode}
-                  className="mt-5 min-h-24 w-full resize-none rounded-lg border border-[#e7e9e2] bg-[#f8f9f6] p-3 font-mono text-xs leading-5 text-[#596154] outline-none"
-                />
-                <button
-                  type="button"
-                  onClick={() => void copyText(embedCode, "Embed code")}
-                  className="mt-4 rounded-lg border border-[#dedfd6] px-4 py-2.5 text-sm font-medium text-[#465044] hover:bg-[#f7f8f5]"
-                >
-                  Copy Embed Code
-                </button>
-              </>
-            ) : organizationError ? (
-              <p role="alert" className="mt-5 text-sm text-[#9d4237]">
-                Unable to create embed code without assistant information.
-              </p>
-            ) : (
-              <div className="mt-5 h-24 animate-pulse rounded-lg bg-[#f4f5f1]" />
-            )}
-          </div>
-        </section>
+        <AssistantSection
+          assistant={account?.assistant ?? null}
+          isLoading={!account && !organizationError}
+          hasError={organizationError !== null}
+          onAssistantStatusChange={(isActive) =>
+            setAccount((current) =>
+              current?.assistant
+                ? {
+                    ...current,
+                    assistant: { ...current.assistant, isActive },
+                  }
+                : current,
+            )
+          }
+        />
       </div>
     </main>
   );
