@@ -715,6 +715,30 @@ test("authenticated and public APIs remain tenant-isolated", async (t) => {
       assert.equal(activePublicInfo.status, 200);
       assert.equal((await activePublicInfo.json()).isActive, true);
 
+      const answerCallsBeforeReactivatedAnswer = answerCalls;
+      const reactivatedAnswer = await fetch(
+        `${baseUrl}/public/assistants/${assistantAToken}/answer`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ question: "scholarship GPA" }),
+        },
+      );
+
+      assert.equal(reactivatedAnswer.status, 201);
+      const reactivatedAnswerBody = (await reactivatedAnswer.json()) as {
+        answer: string;
+        sources: { documentName: string; pageNumber: number }[];
+      };
+      assert.equal(
+        reactivatedAnswerBody.answer,
+        "Answer based on Organization A.",
+      );
+      assert.deepEqual(reactivatedAnswerBody.sources, [
+        { documentName: "Organization_A_Scholarship.pdf", pageNumber: 1 },
+      ]);
+      assert.equal(answerCalls, answerCallsBeforeReactivatedAnswer + 1);
+
       // Org B can change only its own assistant.
       const deactivateB = await fetch(`${baseUrl}/assistants`, {
         method: "PATCH",
