@@ -112,9 +112,47 @@ export function AssistantSection({
         </div>
         {assistantUrl && assistant ? (
           <>
-            <p className="mt-4 text-sm text-[#596154]" role="status">
-              Status: {assistant.isActive ? "Active" : "Inactive"}
-            </p>
+            <div
+              className={`mt-5 flex items-start justify-between gap-4 rounded-xl border p-4 ${
+                assistant.isActive
+                  ? "border-[#dce8dd] bg-[#f2f7f1]"
+                  : "border-[#e9e3da] bg-[#f8f6f2]"
+              }`}
+              aria-live="polite"
+            >
+              <div className="flex items-start gap-3">
+                <span
+                  aria-hidden="true"
+                  className={`mt-1.5 size-2.5 shrink-0 rounded-full ${
+                    assistant.isActive ? "bg-[#4b7957]" : "bg-[#9a8470]"
+                  }`}
+                />
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-sm font-semibold text-[#283d32]">
+                      Active assistant
+                    </p>
+                    <span
+                      className={`rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${
+                        assistant.isActive
+                          ? "bg-[#dcebdd] text-[#315b3b]"
+                          : "bg-[#ece6de] text-[#705c49]"
+                      }`}
+                    >
+                      {assistant.isActive ? "Live" : "Paused"}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs leading-5 text-[#687166]">
+                    {assistant.isActive
+                      ? "Your assistant is available to answer questions from visitors."
+                      : "Your assistant is hidden from visitors and will not answer questions."}
+                  </p>
+                </div>
+              </div>
+              <span className="hidden shrink-0 text-xs font-medium text-[#687166] sm:inline">
+                {assistant.isActive ? "On" : "Off"}
+              </span>
+            </div>
             <div className="mt-3 break-all rounded-lg bg-[#f5f6f2] px-3.5 py-3 text-sm text-[#4d594b]">
               {assistantUrl}
             </div>
@@ -131,7 +169,11 @@ export function AssistantSection({
                 onClick={() => void toggleAssistant()}
                 disabled={isUpdating}
                 aria-pressed={assistant.isActive}
-                className="rounded-lg border border-[#dedfd6] px-4 py-2.5 text-sm font-medium text-[#596154] disabled:opacity-60"
+                className={`rounded-lg px-4 py-2.5 text-sm font-medium transition-colors disabled:cursor-wait disabled:opacity-60 ${
+                  assistant.isActive
+                    ? "border border-[#dedfd6] text-[#596154] hover:bg-[#f7f8f5]"
+                    : "bg-[#283d32] text-white hover:bg-[#354d3e]"
+                }`}
               >
                 {isUpdating
                   ? "Updating..."
