@@ -5,6 +5,30 @@ PDF policies and reference material, then let authenticated users or visitors to
 a public assistant ask questions answered from that organization's documents.
 Answers include document and page sources.
 
+## Live demo
+
+- **Web app:** [Knowly demo](https://your-knowly-demo.example)
+- **Public assistant:** [Try the public assistant](https://your-public-assistant-demo.example)
+- **Demo account:** Add a dedicated hosted demo account after deployment. Do not
+  reuse local seed credentials or personal credentials in a public deployment.
+
+Replace the example URLs and add the hosted demo account details when the
+deployment is ready. Never put API keys, database credentials, or other secrets
+in this README.
+
+## Project highlights
+
+- Create an account and organization, then manage that organization’s PDF
+  knowledge base.
+- Ask questions against organization-scoped documents and receive answers with
+  document and page references.
+- Share a public assistant URL or embed the assistant in another site with an
+  iframe.
+- Activate or deactivate the public assistant from the organization dashboard.
+- Keep tenant access isolated: authenticated requests derive the organization
+  from the signed-in user, and public requests resolve the organization through
+  the persisted assistant record.
+
 ## Problem and features
 
 Organizations often keep important policies in PDFs that are difficult to
@@ -18,6 +42,8 @@ search and interpret. Knowly provides:
   System 1 decision step.
 - Grounded answer generation with backend-attached document/page references.
 - A public assistant URL and an iframe-friendly embed page.
+- Organization-level assistant activation controls; inactive assistants do not
+  provide public information or answers.
 - Automated API integration tests for authenticated and public tenant isolation.
 
 ## Tech stack
@@ -157,6 +183,7 @@ All endpoints are relative to the backend base URL (default
 | `GET` | `/organization/me` | JWT | Get current organization and assistant |
 | `GET` | `/organization/me/documents` | JWT | List current organization's documents |
 | `POST` | `/assistants` | JWT | Get or create current organization's assistant |
+| `PATCH` | `/assistants` | JWT | Activate or deactivate current organization's assistant |
 | `POST` | `/documents` | JWT | Upload and process a PDF |
 | `GET` | `/documents/:id/pages` | JWT | Read pages/chunks for an owned document |
 | `POST` | `/documents/understand-question` | JWT | Inspect structured question understanding |
@@ -231,6 +258,31 @@ Open [http://localhost:3000](http://localhost:3000). The API health check is
 [http://localhost:4000/health](http://localhost:4000/health), and the database
 check is [http://localhost:4000/health/database](http://localhost:4000/health/database).
 Register at `/register` or sign in at `/login`.
+
+## Deployment notes
+
+The application can be deployed as separate frontend and backend services with a
+managed PostgreSQL database. The exact hosting provider is deployment-specific;
+configure the environment variables above in the hosting dashboard rather than
+committing production `.env` files.
+
+Before sharing a hosted demo:
+
+1. Configure the production database and apply migrations with
+   `npm run db:deploy --workspace backend`.
+2. Set production origins, cookie settings, JWT secret, database URL, and LLM
+   provider key in the backend environment. Set the public API and app URLs in
+   the frontend and backend environments.
+3. Use HTTPS and configure credentialed CORS for the deployed frontend origin.
+   If the frontend and API are cross-site, configure secure cookies and
+   `COOKIE_SAME_SITE=none`.
+4. Configure durable storage for uploaded PDFs. The current MVP stores files on
+   the backend filesystem, so use persistent storage or adapt storage before
+   deploying to a platform with an ephemeral filesystem.
+5. Create a separate demo account and use non-sensitive sample documents. Do
+   not enable the local seed credentials as public production credentials.
+6. Verify registration/login, PDF upload and deletion, assistant activation,
+   public answers, and document/page references on the deployed environment.
 
 ## Demo data
 
