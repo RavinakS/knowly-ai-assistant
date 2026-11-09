@@ -1,50 +1,51 @@
 # Knowly — AI Knowledge & Decision Assistant
 
-Knowly is a multi-tenant knowledge assistant for organizations. Teams can upload
-PDF policies and reference material, then let authenticated users or visitors to
-a public assistant ask questions answered from that organization's documents.
-Answers include document and page sources.
+Knowly is a full-stack, multi-tenant knowledge assistant that helps organizations
+make PDF policies and reference material easier to search. Users upload
+organization-specific documents and ask questions; the assistant returns
+answers grounded in those documents with page-level sources. Assistants can
+also be shared through a public page or embedded in another site.
 
-## Live demo
+> **Project status:** Deployment is currently on hold, so there is no hosted
+> demo. The application can be run and tested locally using the instructions
+> below.
 
-- **Web app:** [Knowly demo](https://your-knowly-demo.example)
-- **Public assistant:** [Try the public assistant](https://your-public-assistant-demo.example)
-- **Demo account:** Add a dedicated hosted demo account after deployment. Do not
-  reuse local seed credentials or personal credentials in a public deployment.
+## What it does
 
-Replace the example URLs and add the hosted demo account details when the
-deployment is ready. Never put API keys, database credentials, or other secrets
-in this README.
+- Supports account registration and login, creating an organization for each
+  new account.
+- Lets organizations upload and manage PDFs in a tenant-scoped knowledge base.
+- Extracts text page by page and stores page-aware chunks for retrieval.
+- Answers questions using organization-scoped keyword retrieval and includes
+  document and page references with grounded answers.
+- Provides a shareable public assistant page and iframe-friendly embed.
+- Lets organization users activate or deactivate their public assistant.
 
-## Project highlights
+## Engineering highlights
 
-- Create an account and organization, then manage that organization’s PDF
-  knowledge base.
-- Ask questions against organization-scoped documents and receive answers with
-  document and page references.
-- Share a public assistant URL or embed the assistant in another site with an
-  iframe.
-- Activate or deactivate the public assistant from the organization dashboard.
-- Keep tenant access isolated: authenticated requests derive the organization
-  from the signed-in user, and public requests resolve the organization through
+- Implemented tenant isolation so authenticated requests derive the
+  organization from the signed-in user, while public requests resolve it from
   the persisted assistant record.
+- Built a question-answering pipeline that separates question understanding,
+  deterministic retrieval and decision logic, and grounded answer generation.
+- Attached source metadata from retrieved documents in the backend rather than
+  relying on the language model to generate citations.
+- Added API integration tests covering authenticated and public tenant
+  isolation.
 
-## Problem and features
+## Resume-ready project bullets
 
-Organizations often keep important policies in PDFs that are difficult to
-search and interpret. Knowly provides:
-
-- Account registration and login, with an organization created for each new
-  account.
-- Organization-scoped PDF upload and document management.
-- Page-level PDF text extraction and deterministic overlapping chunks.
-- Keyword-based retrieval, question understanding, and a deterministic
-  System 1 decision step.
-- Grounded answer generation with backend-attached document/page references.
-- A public assistant URL and an iframe-friendly embed page.
-- Organization-level assistant activation controls; inactive assistants do not
-  provide public information or answers.
-- Automated API integration tests for authenticated and public tenant isolation.
+- Built **Knowly**, a multi-tenant AI knowledge assistant that enables
+  organizations to query PDF reference materials and receive grounded answers
+  with document- and page-level sources.
+- Developed a full-stack application using Next.js, React, TypeScript, NestJS,
+  PostgreSQL, and Prisma, including authentication, PDF processing, and public
+  assistant sharing.
+- Designed tenant-scoped document retrieval and backend-enforced organization
+  resolution for both authenticated and public assistant requests.
+- Implemented a structured question-answering pipeline with keyword retrieval,
+  deterministic decision handling, and source-grounded answer generation;
+  added integration tests for tenant isolation.
 
 ## Tech stack
 
@@ -259,30 +260,12 @@ Open [http://localhost:3000](http://localhost:3000). The API health check is
 check is [http://localhost:4000/health/database](http://localhost:4000/health/database).
 Register at `/register` or sign in at `/login`.
 
-## Deployment notes
+## Deployment status
 
-The application can be deployed as separate frontend and backend services with a
-managed PostgreSQL database. The exact hosting provider is deployment-specific;
-configure the environment variables above in the hosting dashboard rather than
-committing production `.env` files.
-
-Before sharing a hosted demo:
-
-1. Configure the production database and apply migrations with
-   `npm run db:deploy --workspace backend`.
-2. Set production origins, cookie settings, JWT secret, database URL, and LLM
-   provider key in the backend environment. Set the public API and app URLs in
-   the frontend and backend environments.
-3. Use HTTPS and configure credentialed CORS for the deployed frontend origin.
-   If the frontend and API are cross-site, configure secure cookies and
-   `COOKIE_SAME_SITE=none`.
-4. Configure durable storage for uploaded PDFs. The current MVP stores files on
-   the backend filesystem, so use persistent storage or adapt storage before
-   deploying to a platform with an ephemeral filesystem.
-5. Create a separate demo account and use non-sensitive sample documents. Do
-   not enable the local seed credentials as public production credentials.
-6. Verify registration/login, PDF upload and deletion, assistant activation,
-   public answers, and document/page references on the deployed environment.
+Deployment is on hold while development work is focused elsewhere. The project
+does not currently have a hosted demo, and production deployment and
+production-scale behavior have not been tested. For now, use the local setup
+instructions above to run the application.
 
 ## Demo data
 
