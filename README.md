@@ -33,7 +33,7 @@ also be shared through a public page or embedded in another site.
 - Added API integration tests covering authenticated and public tenant
   isolation.
 
-## Resume-ready project bullets
+## Project impact
 
 - Built **Knowly**, a multi-tenant AI knowledge assistant that enables
   organizations to query PDF reference materials and receive grounded answers
@@ -159,7 +159,8 @@ The public page is `/assistant/{publicId}`; the iframe page is
   width="100%"
   height="600"
   style="border:0;"
-  title="Knowly Assistant">
+  title="Knowly Assistant"
+>
 </iframe>
 ```
 
@@ -173,26 +174,26 @@ appropriate allowed embedding origins at the hosting/security-header layer.
 All endpoints are relative to the backend base URL (default
 `http://localhost:4000`).
 
-| Method | Path | Access | Purpose |
-| --- | --- | --- | --- |
-| `GET` | `/health` | Public | API liveness |
-| `GET` | `/health/database` | Public | Database connectivity check |
-| `POST` | `/auth/register` | Public | Create account and organization |
-| `POST` | `/auth/login` | Public | Sign in and set session cookie |
-| `POST` | `/auth/logout` | Public | Clear session cookie |
-| `GET` | `/auth/me` | JWT | Get current account |
-| `GET` | `/organization/me` | JWT | Get current organization and assistant |
-| `GET` | `/organization/me/documents` | JWT | List current organization's documents |
-| `POST` | `/assistants` | JWT | Get or create current organization's assistant |
-| `PATCH` | `/assistants` | JWT | Activate or deactivate current organization's assistant |
-| `POST` | `/documents` | JWT | Upload and process a PDF |
-| `GET` | `/documents/:id/pages` | JWT | Read pages/chunks for an owned document |
-| `POST` | `/documents/understand-question` | JWT | Inspect structured question understanding |
-| `POST` | `/documents/search` | JWT | Search current organization's knowledge |
-| `POST` | `/documents/decide` | JWT | Run decision and retrieval without final answer |
-| `POST` | `/documents/answer` | JWT | Run the authenticated grounded-answer flow |
-| `GET` | `/public/assistants/:publicId` | Public | Resolve public assistant information |
-| `POST` | `/public/assistants/:publicId/answer` | Public | Ask the public assistant |
+| Method  | Path                                  | Access | Purpose                                                 |
+| ------- | ------------------------------------- | ------ | ------------------------------------------------------- |
+| `GET`   | `/health`                             | Public | API liveness                                            |
+| `GET`   | `/health/database`                    | Public | Database connectivity check                             |
+| `POST`  | `/auth/register`                      | Public | Create account and organization                         |
+| `POST`  | `/auth/login`                         | Public | Sign in and set session cookie                          |
+| `POST`  | `/auth/logout`                        | Public | Clear session cookie                                    |
+| `GET`   | `/auth/me`                            | JWT    | Get current account                                     |
+| `GET`   | `/organization/me`                    | JWT    | Get current organization and assistant                  |
+| `GET`   | `/organization/me/documents`          | JWT    | List current organization's documents                   |
+| `POST`  | `/assistants`                         | JWT    | Get or create current organization's assistant          |
+| `PATCH` | `/assistants`                         | JWT    | Activate or deactivate current organization's assistant |
+| `POST`  | `/documents`                          | JWT    | Upload and process a PDF                                |
+| `GET`   | `/documents/:id/pages`                | JWT    | Read pages/chunks for an owned document                 |
+| `POST`  | `/documents/understand-question`      | JWT    | Inspect structured question understanding               |
+| `POST`  | `/documents/search`                   | JWT    | Search current organization's knowledge                 |
+| `POST`  | `/documents/decide`                   | JWT    | Run decision and retrieval without final answer         |
+| `POST`  | `/documents/answer`                   | JWT    | Run the authenticated grounded-answer flow              |
+| `GET`   | `/public/assistants/:publicId`        | Public | Resolve public assistant information                    |
+| `POST`  | `/public/assistants/:publicId/answer` | Public | Ask the public assistant                                |
 
 The backend global validation pipe rejects unknown request properties and
 validates question input. Protected document and organization endpoints require
@@ -208,18 +209,18 @@ Copy-Item backend\.env.example backend\.env
 Copy-Item frontend\.env.example frontend\.env.local
 ```
 
-| Variable | Used by | Purpose |
-| --- | --- | --- |
-| `DATABASE_URL` | Backend | PostgreSQL connection string |
-| `PORT` | Backend | API port; defaults to `4000` |
-| `JWT_SECRET` | Backend | Random signing secret; use at least 32 characters |
-| `FRONTEND_URL` | Backend | Allowed frontend origin for credentialed CORS |
-| `COOKIE_SAME_SITE` | Backend | `lax` locally; `none` for cross-site HTTPS |
-| `UPLOAD_DIR` | Backend | Local PDF storage directory; defaults to `./uploads` |
-| `LLM_API_KEY` | Backend | Provider API key; required for LLM-backed questions |
-| `OPENAI_MODEL` | Backend | Optional model override; defaults to `gpt-4o-mini` |
-| `PUBLIC_APP_URL` | Backend | Frontend base URL used to build public links |
-| `NEXT_PUBLIC_API_URL` | Frontend | Backend base URL; local default `http://localhost:4000` |
+| Variable              | Used by  | Purpose                                                  |
+| --------------------- | -------- | -------------------------------------------------------- |
+| `DATABASE_URL`        | Backend  | PostgreSQL connection string                             |
+| `PORT`                | Backend  | API port; defaults to `4000`                             |
+| `JWT_SECRET`          | Backend  | Random signing secret; use at least 32 characters        |
+| `FRONTEND_URL`        | Backend  | Allowed frontend origin for credentialed CORS            |
+| `COOKIE_SAME_SITE`    | Backend  | `lax` locally; `none` for cross-site HTTPS               |
+| `UPLOAD_DIR`          | Backend  | Local PDF storage directory; defaults to `./uploads`     |
+| `LLM_API_KEY`         | Backend  | Provider API key; required for LLM-backed questions      |
+| `OPENAI_MODEL`        | Backend  | Optional model override; defaults to `gpt-4o-mini`       |
+| `PUBLIC_APP_URL`      | Backend  | Frontend base URL used to build public links             |
+| `NEXT_PUBLIC_API_URL` | Frontend | Backend base URL; local default `http://localhost:4000`  |
 | `NEXT_PUBLIC_APP_URL` | Frontend | Frontend base URL; local default `http://localhost:3000` |
 
 Do not commit `.env` files or production credentials. The checked-in `.env.example`
@@ -278,10 +279,10 @@ npm run seed:demo
 The seed is safe to rerun. It creates distinct READY knowledge documents,
 page-level chunks, and active assistants for:
 
-| Organization | Demo login | Password |
-| --- | --- | --- |
+| Organization                       | Demo login               | Password            |
+| ---------------------------------- | ------------------------ | ------------------- |
 | Knowly Demo - Northstar Consulting | `demo@northstar.example` | `Knowly-Demo-2026!` |
-| Knowly Demo - Apex University | `demo@apex.example` | `Knowly-Demo-2026!` |
+| Knowly Demo - Apex University      | `demo@apex.example`      | `Knowly-Demo-2026!` |
 
 These are local demo credentials only; do not use them in a deployed
 environment. The Northstar employee handbook and Apex scholarship guide have
