@@ -6,9 +6,15 @@ organization-specific documents and ask questions; the assistant returns
 answers grounded in those documents with page-level sources. Assistants can
 also be shared through a public page or embedded in another site.
 
-> **Project status:** Deployment is currently on hold, so there is no hosted
-> demo. The application can be run and tested locally using the instructions
-> below.
+## Live demo
+
+- **Application:** [Knowly](https://knowly-ai-assistant.vercel.app/)
+- **Source code:** [GitHub repository](https://github.com/RavinakS/knowly-ai-assistant)
+
+The frontend is deployed on Vercel, the NestJS API on Render, and PostgreSQL is
+hosted by Supabase. To try the public assistant, sign in to the app and use the
+assistant link shown in the organization dashboard. Public assistant links are
+generated per organization and are not fixed demo URLs.
 
 ## What it does
 
@@ -51,7 +57,7 @@ also be shared through a public page or embedded in another site.
 
 - **Frontend:** Next.js App Router, React, TypeScript, Tailwind CSS
 - **Backend:** NestJS, TypeScript
-- **Data:** PostgreSQL and Prisma
+- **Data:** Supabase-hosted PostgreSQL and Prisma
 - **LLM provider:** OpenAI-compatible Chat Completions API (`gpt-4o-mini` by
   default)
 - **Package management:** npm workspaces
@@ -261,12 +267,31 @@ Open [http://localhost:3000](http://localhost:3000). The API health check is
 check is [http://localhost:4000/health/database](http://localhost:4000/health/database).
 Register at `/register` or sign in at `/login`.
 
-## Deployment status
+## Deployment and hosted storage
 
-Deployment is on hold while development work is focused elsewhere. The project
-does not currently have a hosted demo, and production deployment and
-production-scale behavior have not been tested. For now, use the local setup
-instructions above to run the application.
+The hosted application uses three services:
+
+| Service | Provider | Purpose |
+| --- | --- | --- |
+| Frontend | Vercel | Next.js web application |
+| Backend | Render | NestJS API |
+| Database | Supabase | PostgreSQL database |
+
+Production environment variables are configured in each provider's dashboard;
+do not commit production `.env` files or secrets.
+
+**PDF storage limitation:** Uploaded PDF files are currently written to the
+backend's local `UPLOAD_DIR`. The Render service filesystem is ephemeral, so
+original PDFs can be lost when the service restarts, redeploys, or spins down.
+Document records and extracted page/chunk text are stored in PostgreSQL, but
+that does not preserve the original PDF file. Do not upload sensitive or
+irreplaceable documents to the hosted demo. Durable object storage (for example,
+Supabase Storage) is not yet integrated.
+
+The hosted deployment is intended as a portfolio/demo environment; production-
+scale behavior has not been tested. Free hosting plans may sleep or pause
+services, and live LLM requests require a provider API key and may incur
+separate charges.
 
 ## Demo data
 
@@ -320,15 +345,17 @@ npm run db:deploy --workspace backend
   internal retrieval scores.
 - JWTs are stored in HttpOnly cookies; use HTTPS and secure cookie settings in
   production. Configure CORS and allowed iframe origins for the deployment.
-- Uploaded PDFs are stored locally in this MVP, and PDF processing is
-  synchronous; production deployments should consider durable object storage
-  and asynchronous processing.
+- Uploaded PDFs are stored on the backend's local filesystem. On Render's
+  ephemeral filesystem, original files may be lost after a restart, redeploy,
+  or spin-down; durable object storage is not yet integrated. PDF processing is
+  synchronous.
 - Retrieval is keyword-based; embeddings, vector search, and hybrid retrieval
   are not implemented.
 - Grounding instructions and backend-attached sources do not provide formal
   claim-level answer verification.
 - Production rate limiting and analytics are not implemented.
-- Production deployment and production-scale behavior have not been tested.
+- The hosted app is deployed for demonstration, but production-scale behavior
+  has not been tested.
 - Live LLM-backed answers require a valid `LLM_API_KEY`; integration tests
   mock provider responses.
 
