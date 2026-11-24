@@ -4,6 +4,9 @@
   "description": "",
   "author": "",
   "private": true,
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "license": "UNLICENSED",
   "type": "module",
   "scripts": {
@@ -17,7 +20,7 @@
     "db:deploy": "prisma migrate deploy",
     "seed:pdfs": "tsx scripts/generate_test_pdfs.ts",
     "seed:demo": "tsx scripts/seed_demo.ts",
-    "test:tenant": "tsx --test test/tenant-isolation.test.ts test/documents.test.ts"
+    "test:tenant": "tsx --test test/tenant-isolation.test.ts test/documents.test.ts test/supabase-document-storage.test.ts"
   },
   "dependencies": {
     "@nestjs/common": "^12.0.1",
@@ -25,6 +28,7 @@
     "@nestjs/jwt": "^12.0.2",
     "@nestjs/platform-express": "^12.0.1",
     "@prisma/client": "6.19.2",
+    "@supabase/supabase-js": "^2.119.2",
     "bcryptjs": "^3.0.3",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",

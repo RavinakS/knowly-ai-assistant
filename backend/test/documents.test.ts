@@ -11,6 +11,7 @@ import { randomUUID } from "node:crypto";
 dotenv.config({ path: resolve(process.cwd(), ".env") });
 
 const originalUploadDir = process.env.UPLOAD_DIR;
+const originalStorageProvider = process.env.STORAGE_PROVIDER;
 
 let app: INestApplication;
 let prisma: import("@prisma/client").PrismaClient;
@@ -28,6 +29,7 @@ interface TestDocument {
 }
 
 before(async () => {
+  process.env.STORAGE_PROVIDER = "local";
   uploadDir = await mkdtemp(join(tmpdir(), "knowly-documents-test"));
   process.env.UPLOAD_DIR = uploadDir;
 
@@ -109,6 +111,12 @@ after(async () => {
     delete process.env.UPLOAD_DIR;
   } else {
     process.env.UPLOAD_DIR = originalUploadDir;
+  }
+
+  if (originalStorageProvider === undefined) {
+    delete process.env.STORAGE_PROVIDER;
+  } else {
+    process.env.STORAGE_PROVIDER = originalStorageProvider;
   }
 });
 

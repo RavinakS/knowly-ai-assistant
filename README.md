@@ -222,7 +222,11 @@ Copy-Item frontend\.env.example frontend\.env.local
 | `JWT_SECRET`          | Backend  | Random signing secret; use at least 32 characters        |
 | `FRONTEND_URL`        | Backend  | Allowed frontend origin for credentialed CORS            |
 | `COOKIE_SAME_SITE`    | Backend  | `lax` locally; `none` for cross-site HTTPS               |
-| `UPLOAD_DIR`          | Backend  | Local PDF storage directory; defaults to `./uploads`     |
+| `STORAGE_PROVIDER`        | Backend  | `local` for development or `supabase` for durable storage   |
+| `UPLOAD_DIR`              | Backend  | Local PDF storage directory; defaults to `./uploads`       |
+| `SUPABASE_URL`            | Backend  | Supabase project URL (required for Supabase storage)       |
+| `SUPABASE_SECRET_KEY`     | Backend  | Server-only secret key; never expose to the frontend       |
+| `SUPABASE_STORAGE_BUCKET` | Backend  | Name of the private PDF bucket created in Supabase         |
 | `LLM_API_KEY`         | Backend  | Provider API key; required for LLM-backed questions      |
 | `OPENAI_MODEL`        | Backend  | Optional model override; defaults to `gpt-4o-mini`       |
 | `PUBLIC_APP_URL`      | Backend  | Frontend base URL used to build public links             |
@@ -235,7 +239,7 @@ and do not need a live LLM API key.
 
 ## Local setup
 
-Requirements: Node.js 20.16+ or 22.3+, npm, and PostgreSQL.
+Requirements: Node.js 22.0+, npm, and PostgreSQL.
 
 From the repository root:
 
@@ -280,13 +284,18 @@ The hosted application uses three services:
 Production environment variables are configured in each provider's dashboard;
 do not commit production `.env` files or secrets.
 
-**PDF storage limitation:** Uploaded PDF files are currently written to the
-backend's local `UPLOAD_DIR`. The Render service filesystem is ephemeral, so
-original PDFs can be lost when the service restarts, redeploys, or spins down.
-Document records and extracted page/chunk text are stored in PostgreSQL, but
-that does not preserve the original PDF file. Do not upload sensitive or
-irreplaceable documents to the hosted demo. Durable object storage (for example,
-Supabase Storage) is not yet integrated.
+The backend now supports both local filesystem storage and Supabase Storage.
+Local development uses `STORAGE_PROVIDER=local`. To persist PDFs on Render,
+configure `STORAGE_PROVIDER=supabase`, `SUPABASE_URL`,
+`SUPABASE_SECRET_KEY`, and `SUPABASE_STORAGE_BUCKET` in the Render backend
+environment, then redeploy. Keep the bucket private and the secret key only in
+the backend environment; it must never be exposed to the frontend.
+
+Until the deployed Render service is configured and redeployed with Supabase
+storage, PDF files remain on its ephemeral local filesystem and can be lost
+after a restart, redeploy, or spin-down. Document records and extracted
+page/chunk text are stored in PostgreSQL, but that does not preserve the
+original PDF file.
 
 The hosted deployment is intended as a portfolio/demo environment; production-
 scale behavior has not been tested. Free hosting plans may sleep or pause
@@ -345,10 +354,9 @@ npm run db:deploy --workspace backend
   internal retrieval scores.
 - JWTs are stored in HttpOnly cookies; use HTTPS and secure cookie settings in
   production. Configure CORS and allowed iframe origins for the deployment.
-- Uploaded PDFs are stored on the backend's local filesystem. On Render's
-  ephemeral filesystem, original files may be lost after a restart, redeploy,
-  or spin-down; durable object storage is not yet integrated. PDF processing is
-  synchronous.
+- The backend supports local filesystem and private Supabase Storage providers.
+  The deployed environment must select and configure Supabase storage for PDFs
+  to persist across Render restarts. PDF processing is synchronous.
 - Retrieval is keyword-based; embeddings, vector search, and hybrid retrieval
   are not implemented.
 - Grounding instructions and backend-attached sources do not provide formal

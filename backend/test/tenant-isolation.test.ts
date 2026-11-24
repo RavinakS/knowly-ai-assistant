@@ -10,6 +10,7 @@ dotenv.config({ path: resolve(process.cwd(), ".env") });
 
 const originalFetch = globalThis.fetch;
 const originalApiKey = process.env.LLM_API_KEY;
+const originalStorageProvider = process.env.STORAGE_PROVIDER;
 const llmContexts: string[] = [];
 let answerCalls = 0;
 let providerMode: "normal" | "invalid-json" = "normal";
@@ -27,6 +28,7 @@ let documentBId: string;
 
 before(async () => {
   process.env.LLM_API_KEY = "test-key-not-a-real-secret";
+  process.env.STORAGE_PROVIDER = "local";
   globalThis.fetch = async (input, init) => {
     const url =
       typeof input === "string"
@@ -239,6 +241,11 @@ after(async () => {
     delete process.env.LLM_API_KEY;
   } else {
     process.env.LLM_API_KEY = originalApiKey;
+  }
+  if (originalStorageProvider === undefined) {
+    delete process.env.STORAGE_PROVIDER;
+  } else {
+    process.env.STORAGE_PROVIDER = originalStorageProvider;
   }
 });
 
