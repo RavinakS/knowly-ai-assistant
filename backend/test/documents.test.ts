@@ -290,11 +290,11 @@ test("DELETE /documents/:id is authenticated and organization-scoped", async (t)
     async () => {
       const document = await createDocument(organizationAId);
       const { LocalUploadStorage } =
-        await import("../dist/documents/local-upload-storage.js");
+        await import("../dist/documents/storage/local-upload-storage.js");
       const storage = app.get(LocalUploadStorage);
-      const originalStage = storage.stageDocumentFile.bind(storage);
+      const originalStage = storage.stageForDeletion.bind(storage);
 
-      storage.stageDocumentFile = async () => {
+      storage.stageForDeletion = async () => {
         throw new Error(`Test failure at ${document.filePath}`);
       };
 
@@ -310,7 +310,7 @@ test("DELETE /documents/:id is authenticated and organization-scoped", async (t)
         );
         assert.equal(await fileExists(document.filePath), true);
       } finally {
-        storage.stageDocumentFile = originalStage;
+        storage.stageForDeletion = originalStage;
       }
     },
   );
@@ -378,20 +378,27 @@ test("DELETE /documents/:id is authenticated and organization-scoped", async (t)
 });
 
 test("POST /documents validates uploads and reports processing failures", async (t) => {
-  await t.test("rejects an empty upload without creating a document", async () => {
-    const before = await prisma.document.count({
-      where: { organizationId: organizationAId },
-    });
-    const response = await uploadDocument(Buffer.alloc(0), "empty.pdf", "application/pdf");
-
-    assert.equal(response.status, 400);
-    assert.equal(
-      await prisma.document.count({
+  await t.test(
+    "rejects an empty upload without creating a document",
+    async () => {
+      const before = await prisma.document.count({
         where: { organizationId: organizationAId },
-      }),
-      before,
-    );
-  });
+      });
+      const response = await uploadDocument(
+        Buffer.alloc(0),
+        "empty.pdf",
+        "application/pdf",
+      );
+
+      assert.equal(response.status, 400);
+      assert.equal(
+        await prisma.document.count({
+          where: { organizationId: organizationAId },
+        }),
+        before,
+      );
+    },
+  );
 
   await t.test("rejects unsupported file types", async () => {
     const before = await prisma.document.count({
@@ -412,24 +419,27 @@ test("POST /documents validates uploads and reports processing failures", async 
     );
   });
 
-  await t.test("rejects a PDF MIME type with an invalid PDF signature", async () => {
-    const before = await prisma.document.count({
-      where: { organizationId: organizationAId },
-    });
-    const response = await uploadDocument(
-      Buffer.from("not actually a PDF"),
-      "spoofed.pdf",
-      "application/pdf",
-    );
-
-    assert.equal(response.status, 415);
-    assert.equal(
-      await prisma.document.count({
+  await t.test(
+    "rejects a PDF MIME type with an invalid PDF signature",
+    async () => {
+      const before = await prisma.document.count({
         where: { organizationId: organizationAId },
-      }),
-      before,
-    );
-  });
+      });
+      const response = await uploadDocument(
+        Buffer.from("not actually a PDF"),
+        "spoofed.pdf",
+        "application/pdf",
+      );
+
+      assert.equal(response.status, 415);
+      assert.equal(
+        await prisma.document.count({
+          where: { organizationId: organizationAId },
+        }),
+        before,
+      );
+    },
+  );
 
   await t.test("rejects files larger than 10 MB", async () => {
     const before = await prisma.document.count({
@@ -450,57 +460,62 @@ test("POST /documents validates uploads and reports processing failures", async 
     );
   });
 
-  await t.test("marks extraction failures as FAILED without partial knowledge", async () => {
-    const { PdfTextExtractorService } = await import(
-      "../dist/documents/pdf-text-extractor.service.js"
-    );
-    const extractor = app.get(PdfTextExtractorService);
-    const originalExtract = extractor.extract.bind(extractor);
-    extractor.extract = async () => {
-      throw new Error("Simulated PDF extraction failure");
-    };
-
-    try {
-      const response = await uploadDocument(
-        Buffer.from("%PDF-1.4\nminimal test fixture"),
-        "extraction-fails.pdf",
-        "application/pdf",
-      );
-      assert.equal(response.status, 201);
-      const uploaded = (await response.json()) as {
-        id: string;
-        status: string;
+  await t.test(
+    "marks extraction failures as FAILED without partial knowledge",
+    async () => {
+      const { PdfTextExtractorService } =
+        await import("../dist/documents/pdf-text-extractor.service.js");
+      const extractor = app.get(PdfTextExtractorService);
+      const originalExtract = extractor.extract.bind(extractor);
+      extractor.extract = async () => {
+        throw new Error("Simulated PDF extraction failure");
       };
-      assert.equal(uploaded.status, "FAILED");
 
-      const record = await prisma.document.findUnique({
-        where: { id: uploaded.id },
-        select: { organizationId: true, filename: true, status: true },
-      });
-      assert.ok(record);
-      assert.equal(record.status, "FAILED");
-      assert.equal(record.organizationId, organizationAId);
-      assert.equal(
-        await prisma.documentPage.count({
-          where: { documentId: uploaded.id },
-        }),
-        0,
-      );
-      assert.equal(
-        await prisma.documentChunk.count({
-          where: { documentId: uploaded.id },
-        }),
-        0,
-      );
+      try {
+        const response = await uploadDocument(
+          Buffer.from("%PDF-1.4\nminimal test fixture"),
+          "extraction-fails.pdf",
+          "application/pdf",
+        );
+        assert.equal(response.status, 201);
+        const uploaded = (await response.json()) as {
+          id: string;
+          status: string;
+        };
+        assert.equal(uploaded.status, "FAILED");
 
-      const [storedOrganizationId, storedFilename] = record.filename.split("/");
-      assert.equal(storedOrganizationId, organizationAId);
-      assert.equal(
-        await fileExists(join(uploadDir, storedOrganizationId, storedFilename)),
-        true,
-      );
-    } finally {
-      extractor.extract = originalExtract;
-    }
-  });
+        const record = await prisma.document.findUnique({
+          where: { id: uploaded.id },
+          select: { organizationId: true, filename: true, status: true },
+        });
+        assert.ok(record);
+        assert.equal(record.status, "FAILED");
+        assert.equal(record.organizationId, organizationAId);
+        assert.equal(
+          await prisma.documentPage.count({
+            where: { documentId: uploaded.id },
+          }),
+          0,
+        );
+        assert.equal(
+          await prisma.documentChunk.count({
+            where: { documentId: uploaded.id },
+          }),
+          0,
+        );
+
+        const [storedOrganizationId, storedFilename] =
+          record.filename.split("/");
+        assert.equal(storedOrganizationId, organizationAId);
+        assert.equal(
+          await fileExists(
+            join(uploadDir, storedOrganizationId, storedFilename),
+          ),
+          true,
+        );
+      } finally {
+        extractor.extract = originalExtract;
+      }
+    },
+  );
 });

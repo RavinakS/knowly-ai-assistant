@@ -19,7 +19,7 @@ import { memoryStorage } from "multer";
 import type { AuthenticatedUser } from "../auth/authenticated-user.js";
 import { CurrentUser } from "../auth/current-user.decorator.js";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard.js";
-import { DocumentsService } from "./documents.service.js";
+import { DocumentsService } from "./management/documents.service.js";
 import { MulterExceptionFilter } from "./multer-exception.filter.js";
 import { SearchDocumentsDto } from "./dto/search-documents.dto.js";
 import { RetrievalService } from "./retrieval.service.js";

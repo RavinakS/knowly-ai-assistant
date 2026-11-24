@@ -9,13 +9,17 @@ import {
   PayloadTooLargeException,
   UnsupportedMediaTypeException,
   UnauthorizedException,
+  Inject,
 } from "@nestjs/common";
 import { DocumentStatus } from "@prisma/client";
-import { PrismaService } from "../prisma/prisma.service.js";
-import { DocumentProcessingService } from "./document-processing.service.js";
-import { LocalUploadStorage } from "./local-upload-storage.js";
+import { PrismaService } from "../../prisma/prisma.service.js";
+import { DocumentProcessingService } from "../document-processing.service.js";
 import { isUUID } from "class-validator";
-import { error } from "console";
+import { DOCUMENT_STORAGE } from "../storage/document-storage.interface.js";
+import type {
+  DocumentStorage,
+  StagedDocumentFile,
+} from "../storage/document-storage.interface.js";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
@@ -33,8 +37,9 @@ export class DocumentsService {
   private readonly logger = new Logger(DocumentsService.name);
 
   constructor(
+    @Inject(DOCUMENT_STORAGE)
+    private readonly storage: DocumentStorage,
     private readonly prisma: PrismaService,
-    private readonly storage: LocalUploadStorage,
     private readonly processing: DocumentProcessingService,
   ) {}
 
@@ -95,7 +100,7 @@ export class DocumentsService {
           data: {
             id: stored.id,
             organizationId: user.organizationId,
-            filename: stored.filename,
+            filename: stored.storageKey,
             originalFilename,
             fileSize: file.size,
             pageCount: null,
@@ -114,7 +119,7 @@ export class DocumentsService {
       });
     } catch (error) {
       try {
-        await this.storage.remove(stored.path);
+        await this.storage.remove(user.organizationId, stored.storageKey);
       } catch (cleanupError) {
         this.logger.error(
           "Failed to clean up a stored upload after its database insert failed.",
@@ -142,7 +147,7 @@ export class DocumentsService {
       processingResult = await this.processing.process(
         stored.id,
         user.organizationId,
-        stored.path,
+        stored.storageKey,
       );
     } catch (error) {
       if (error instanceof PayloadTooLargeException) {
@@ -155,7 +160,7 @@ export class DocumentsService {
               },
             },
           });
-          await this.storage.remove(stored.path);
+          await this.storage.remove(user.organizationId, stored.storageKey);
         } catch (cleanupError) {
           this.logger.error(
             `Failed to clean up an over-limit document ${stored.id}.`,
@@ -246,10 +251,10 @@ export class DocumentsService {
       );
     }
 
-    let stagedFile;
+    let stagedFile: StagedDocumentFile | null = null;
 
     try {
-      stagedFile = await this.storage.stageDocumentFile(
+      stagedFile = await this.storage.stageForDeletion(
         user.organization.id,
         document.filename,
       );
@@ -276,7 +281,7 @@ export class DocumentsService {
     } catch (error) {
       if (stagedFile) {
         try {
-          await this.storage.restoreStagedDocumentFile(stagedFile);
+          await this.storage.restoreStagedFile(stagedFile);
         } catch (restoreError) {
           this.logger.error(
             `Failed to restore the PDF for document ${document.id} after database deletion failed.`,
@@ -297,7 +302,7 @@ export class DocumentsService {
 
     if (stagedFile) {
       try {
-        await this.storage.removeStagedDocumentFile(stagedFile);
+        await this.storage.removeStagedFile(stagedFile);
       } catch (error) {
         this.logger.error(
           `Document ${document.id} was deleted, but its staged PDF could not be removed.`,

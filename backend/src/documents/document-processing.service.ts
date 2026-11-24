@@ -1,13 +1,16 @@
 import {
+  Inject,
   Injectable,
   InternalServerErrorException,
   Logger,
   PayloadTooLargeException,
-} from '@nestjs/common';
-import { DocumentStatus } from '@prisma/client';
-import { PrismaService } from '../prisma/prisma.service.js';
-import { PdfTextExtractorService } from './pdf-text-extractor.service.js';
-import { ChunkingService } from './chunking.service.js';
+} from "@nestjs/common";
+import { DocumentStatus } from "@prisma/client";
+import { PrismaService } from "../prisma/prisma.service.js";
+import { PdfTextExtractorService } from "./pdf-text-extractor.service.js";
+import { ChunkingService } from "./chunking.service.js";
+import { DOCUMENT_STORAGE } from "./storage/document-storage.interface.js";
+import type { DocumentStorage } from "./storage/document-storage.interface.js";
 
 const MAX_PDF_PAGES = 20;
 
@@ -16,6 +19,8 @@ export class DocumentProcessingService {
   private readonly logger = new Logger(DocumentProcessingService.name);
 
   constructor(
+    @Inject(DOCUMENT_STORAGE)
+    private readonly storage: DocumentStorage,
     private readonly prisma: PrismaService,
     private readonly extractor: PdfTextExtractorService,
     private readonly chunking: ChunkingService,
@@ -24,11 +29,12 @@ export class DocumentProcessingService {
   async process(
     documentId: string,
     organizationId: string,
-    filePath: string,
+    storageKey: string,
   ): Promise<{ status: DocumentStatus; pageCount: number | null }> {
     let extracted;
     try {
-      extracted = await this.extractor.extract(filePath);
+      const buffer = await this.storage.read(organizationId, storageKey);
+      extracted = await this.extractor.extract(buffer);
     } catch (error) {
       await this.markFailed(documentId, organizationId, error);
       return { status: DocumentStatus.FAILED, pageCount: null };
@@ -118,7 +124,7 @@ export class DocumentProcessingService {
         statusError instanceof Error ? statusError.stack : undefined,
       );
       throw new InternalServerErrorException(
-        'The document could not be processed.',
+        "The document could not be processed.",
       );
     }
   }
